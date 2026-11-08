@@ -1,0 +1,259 @@
+// ──────────────────────────────────────────────────────────────
+// UNO 게임 엔진 (순수 함수 모음)
+// - 모든 함수는 상태를 변경하지 않고 새 GameState 를 반환한다.
+// - 2인전 규칙: Skip/Reverse = "내가 한 번 더", Draw2/Draw4 = "상대가 뽑고 턴 넘김"
+//   (스펙 3장 '2인전 규칙 주의' 기준, Draw 누적은 1단계에서 생략)
+// ──────────────────────────────────────────────────────────────
+
+import type { Card, GameState, Phase, PlayColor, Turn } from './types'
+import { createDeck, shuffle } from './deck'
+
+const HAND_SIZE = 7
+
+function other(who: Turn): Turn {
+  return who === 'player' ? 'ai' : 'player'
+}
+
+/** 버린 더미의 맨 위(top) 카드 */
+export function topCard(state: GameState): Card {
+  return state.discard[state.discard.length - 1]
+}
+
+/**
+ * 한 장이 낼 수 있는 카드인지 판정
+ * - top 과 색이 같거나 / 숫자·종류가 같거나 / 와일드면 가능
+ */
+export function canPlayCard(
+  card: Card,
+  top: Card,
+  currentColor: PlayColor,
+): boolean {
+  if (card.color === 'wild') return true
+  if (card.color === currentColor) return true
+  if (card.kind === 'number' && top.kind === 'number' && card.value === top.value)
+    return true
+  if (card.kind !== 'number' && card.kind === top.kind) return true
+  return false
+}
+
+/** 손패에서 낼 수 있는 카드 목록 */
+export function getValidCards(
+  hand: Card[],
+  top: Card,
+  currentColor: PlayColor,
+): Card[] {
+  return hand.filter((c) => canPlayCard(c, top, currentColor))
+}
+
+// ── 덱 보충(재셔플) ───────────────────────────────────────────
+/**
+ * 뽑을 더미가 비면 버린 더미의 top 1장만 남기고 나머지를 셔플해 새 덱으로.
+ * (스펙 8장 예외 처리)
+ */
+function refillDeck(
+  deck: Card[],
+  discard: Card[],
+): { deck: Card[]; discard: Card[] } {
+  if (deck.length > 0 || discard.length <= 1) return { deck, discard }
+  const top = discard[discard.length - 1]
+  const rest = discard.slice(0, -1)
+  return { deck: shuffle(rest), discard: [top] }
+}
+
+/** 더미에서 n장 뽑아 drawn 으로 반환(필요 시 재셔플) */
+function drawN(
+  deck: Card[],
+  discard: Card[],
+  n: number,
+): { deck: Card[]; discard: Card[]; drawn: Card[] } {
+  let d = deck
+  let dc = discard
+  const drawn: Card[] = []
+  for (let i = 0; i < n; i++) {
+    if (d.length === 0) {
+      const r = refillDeck(d, dc)
+      d = r.deck
+      dc = r.discard
+      if (d.length === 0) break // 정말로 카드가 다 떨어진 경우
+    }
+    drawn.push(d[d.length - 1])
+    d = d.slice(0, -1)
+  }
+  return { deck: d, discard: dc, drawn }
+}
+
+// ── 초기 게임 생성 ────────────────────────────────────────────
+export function createInitialGame(): GameState {
+  let deck = shuffle(createDeck())
+
+  const playerHand = deck.slice(deck.length - HAND_SIZE)
+  deck = deck.slice(0, deck.length - HAND_SIZE)
+  const aiHand = deck.slice(deck.length - HAND_SIZE)
+  deck = deck.slice(0, deck.length - HAND_SIZE)
+
+  // 시작 카드는 숫자 카드로 (와일드/액션으로 시작하지 않도록)
+  let start: Card | undefined
+  const leftover: Card[] = []
+  while (deck.length > 0) {
+    const c = deck[deck.length - 1]
+    deck = deck.slice(0, -1)
+    if (c.kind === 'number') {
+      start = c
+      break
+    }
+    leftover.push(c)
+  }
+  // 못 뽑은 액션/와일드 카드는 덱 아래로 되돌림
+  deck = [...leftover, ...deck]
+  if (!start) start = { id: 'fallback', color: 'red', kind: 'number', value: 0 }
+
+  return {
+    deck,
+    discard: [start],
+    currentColor: start.color === 'wild' ? 'red' : (start.color as PlayColor),
+    playerHand,
+    aiHand,
+    turn: 'player',
+    pendingDraw: 0,
+    phase: 'playing',
+    turns: 0,
+    playerRecentColors: [],
+    lastEvent: '게임 시작! 내 차례입니다.',
+  }
+}
+
+// ── 카드 내기 ─────────────────────────────────────────────────
+/**
+ * who 가 cardId 카드를 낸다.
+ * 와일드 계열이면 chosenColor 필수.
+ */
+export function playCard(
+  state: GameState,
+  who: Turn,
+  cardId: string,
+  chosenColor?: PlayColor,
+): GameState {
+  if (state.phase !== 'playing' || state.turn !== who) return state
+
+  const hand = who === 'player' ? state.playerHand : state.aiHand
+  const card = hand.find((c) => c.id === cardId)
+  if (!card) return state
+  if (!canPlayCard(card, topCard(state), state.currentColor)) return state
+
+  const newHand = hand.filter((c) => c.id !== cardId)
+  let deck = state.deck
+  let discard = [...state.discard, card]
+  let aiHand = who === 'player' ? state.aiHand : newHand
+  let playerHand = who === 'player' ? newHand : state.playerHand
+
+  // 색 결정
+  const newColor: PlayColor =
+    card.color === 'wild'
+      ? chosenColor ?? 'red'
+      : (card.color as PlayColor)
+
+  const whoLabel = who === 'player' ? '나' : 'AI'
+  let event = ''
+
+  // 효과 적용 + 다음 턴 결정
+  let nextWho: Turn
+  if (card.kind === 'skip' || card.kind === 'reverse') {
+    // 2인전: 상대 건너뜀 → 같은 사람 한 번 더
+    nextWho = who
+    event = `${whoLabel}: ${card.kind === 'skip' ? 'Skip' : 'Reverse'} → 한 번 더!`
+  } else if (card.kind === 'draw2' || card.kind === 'wild4') {
+    // 상대가 뽑고 턴 넘김 (누적 없이 즉시 처리)
+    const n = card.kind === 'draw2' ? 2 : 4
+    const opponentIsPlayer = who === 'ai'
+    const r = drawN(deck, discard, n)
+    deck = r.deck
+    discard = r.discard
+    if (opponentIsPlayer) playerHand = [...playerHand, ...r.drawn]
+    else aiHand = [...aiHand, ...r.drawn]
+    nextWho = other(who)
+    const label = card.kind === 'draw2' ? '+2' : 'Wild +4'
+    event = `${whoLabel}: ${label} → 상대가 ${r.drawn.length}장 뽑음`
+  } else {
+    // 숫자 / 일반 와일드
+    nextWho = other(who)
+    if (card.kind === 'wild') event = `${whoLabel}: 와일드 → ${colorKo(newColor)} 지정`
+    else event = `${whoLabel}: ${colorKo(newColor)} ${card.value} 냄`
+  }
+
+  // 상대(플레이어)가 낸 색 추적 (어려움 AI 참고용)
+  let playerRecentColors = state.playerRecentColors
+  if (who === 'player') {
+    playerRecentColors = [...playerRecentColors, newColor].slice(-5)
+  }
+
+  // 승패 판정
+  let phase: Phase = state.phase
+  const winnerHandEmpty = (who === 'player' ? playerHand : aiHand).length === 0
+  if (winnerHandEmpty) {
+    phase = who === 'player' ? 'won' : 'lost'
+    event = who === 'player' ? '🎉 승리! 카드를 모두 냈습니다.' : '😢 패배… AI가 먼저 끝냈습니다.'
+    nextWho = who
+  }
+
+  return {
+    ...state,
+    deck,
+    discard,
+    playerHand,
+    aiHand,
+    currentColor: newColor,
+    turn: nextWho,
+    phase,
+    turns: state.turns + 1,
+    playerRecentColors,
+    lastEvent: event,
+  }
+}
+
+// ── 카드 뽑기(턴 유지) ────────────────────────────────────────
+/** who 가 더미에서 1장 뽑는다. 턴은 그대로 둔다(뽑은 카드 처리 여부는 호출자가 결정). */
+export function drawCard(state: GameState, who: Turn): GameState {
+  if (state.phase !== 'playing' || state.turn !== who) return state
+  const r = drawN(state.deck, state.discard, 1)
+  if (r.drawn.length === 0) {
+    return { ...state, lastEvent: '뽑을 카드가 없습니다.' }
+  }
+  const drawn = r.drawn[0]
+  const playerHand =
+    who === 'player' ? [...state.playerHand, ...r.drawn] : state.playerHand
+  const aiHand = who === 'ai' ? [...state.aiHand, ...r.drawn] : state.aiHand
+  const playable = canPlayCard(drawn, topCard(state), state.currentColor)
+  return {
+    ...state,
+    deck: r.deck,
+    discard: r.discard,
+    playerHand,
+    aiHand,
+    lastEvent:
+      (who === 'player' ? '나' : 'AI') +
+      `: 카드 1장 뽑음${playable ? ' (낼 수 있음)' : ''}`,
+  }
+}
+
+/** 턴을 상대에게 넘긴다(패스). */
+export function passTurn(state: GameState, who: Turn): GameState {
+  if (state.phase !== 'playing' || state.turn !== who) return state
+  return {
+    ...state,
+    turn: other(who),
+    turns: state.turns + 1,
+    lastEvent: `${who === 'player' ? '나' : 'AI'}: 패스`,
+  }
+}
+
+/** 방금 뽑은(손패 마지막) 카드가 낼 수 있는 카드인지 */
+export function lastDrawnPlayable(state: GameState, who: Turn): boolean {
+  const hand = who === 'player' ? state.playerHand : state.aiHand
+  if (hand.length === 0) return false
+  const last = hand[hand.length - 1]
+  return canPlayCard(last, topCard(state), state.currentColor)
+}
+
+export function colorKo(c: PlayColor): string {
+  return { red: '빨강', yellow: '노랑', green: '초록', blue: '파랑' }[c]
+}
