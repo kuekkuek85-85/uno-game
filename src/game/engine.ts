@@ -216,7 +216,17 @@ export function drawCard(state: GameState, who: Turn): GameState {
   if (state.phase !== 'playing' || state.turn !== who) return state
   const r = drawN(state.deck, state.discard, 1)
   if (r.drawn.length === 0) {
-    return { ...state, lastEvent: '뽑을 카드가 없습니다.' }
+    // 뽑기 더미와 버린 더미가 모두 소진되어 더 뽑을 수 없는 경우:
+    // 낼 카드가 없는 플레이어가 이 지점에 도달하면 게임을 진행할 수 없으므로
+    // 손패가 적은 쪽을 승자로 하여 교착을 끝낸다(동점은 AI 승).
+    const playerWins = state.playerHand.length < state.aiHand.length
+    return {
+      ...state,
+      phase: playerWins ? 'won' : 'lost',
+      lastEvent: playerWins
+        ? '🎉 승리! 더 이상 뽑을 카드가 없어 손패가 적은 내가 이겼습니다.'
+        : '😢 패배… 더 이상 뽑을 카드가 없어 손패가 적은 AI가 이겼습니다.',
+    }
   }
   const drawn = r.drawn[0]
   const playerHand =

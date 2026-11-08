@@ -3,7 +3,7 @@
 // 스펙 3장(덱 구성 108장) 기반
 // ──────────────────────────────────────────────────────────────
 
-import type { Card, PlayColor } from './types'
+import type { Card } from './types'
 import { PLAY_COLORS } from './types'
 
 let idCounter = 0
@@ -55,9 +55,4 @@ export function shuffle<T>(arr: T[]): T[] {
     ;[a[i], a[j]] = [a[j], a[i]]
   }
   return a
-}
-
-/** 숫자 카드 중 하나를 시작 카드로 쓰기 위해 찾기 (와일드/액션으로 시작하지 않도록) */
-export function pickStartColor(card: Card): PlayColor {
-  return card.color === 'wild' ? 'red' : (card.color as PlayColor)
 }

@@ -90,13 +90,14 @@ export function aiMoveNormal(state: GameState): AiDecision {
   if (numbers.length > 0) {
     // 2) 낼 색을 고를 땐, 내 손에 가장 많은 색을 유지하는 쪽
     const keep = mostCommonColor(state.aiHand)
+    // 색깔별 장수는 한 번만 계산해 재사용(정렬 비교자 안 반복 계산 방지)
+    const counts = countColors(state.aiHand)
     const best =
       numbers.find((c) => c.color === keep) ??
-      // 가장 많은 색이 없으면 숫자 중 손에 가장 흔한 색 카드
-      numbers.sort(
+      // 가장 많은 색이 없으면 숫자 중 손에 가장 흔한 색 카드 (원본 보존 위해 사본 정렬)
+      [...numbers].sort(
         (a, b) =>
-          countColors(state.aiHand)[b.color as PlayColor] -
-          countColors(state.aiHand)[a.color as PlayColor],
+          counts[b.color as PlayColor] - counts[a.color as PlayColor],
       )[0]
     return { type: 'play', cardId: best.id }
   }

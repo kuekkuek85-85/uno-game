@@ -4,6 +4,7 @@ import { createDeck } from './deck'
 import {
   canPlayCard,
   createInitialGame,
+  drawCard,
   getValidCards,
   playCard,
   topCard,
@@ -92,6 +93,39 @@ describe('카드 내기 턴 규칙 (2인전)', () => {
     const after = playCard(g2, 'player', 'last')
     expect(after.phase).toBe('won')
     expect(after.playerHand.length).toBe(0)
+  })
+})
+
+describe('덱 소진 교착 처리', () => {
+  it('더 뽑을 카드가 없으면 손패 적은 쪽이 승리(동점은 AI 승)', () => {
+    const g = createInitialGame()
+    const top = topCard(g)
+    // 덱과 버린 더미를 소진시키고(top 1장만), 플레이어 손패를 더 적게 만든다
+    const stuck = {
+      ...g,
+      deck: [],
+      discard: [top],
+      playerHand: g.playerHand.slice(0, 1),
+      aiHand: g.aiHand.slice(0, 3),
+      turn: 'player' as const,
+    }
+    const after = drawCard(stuck, 'player')
+    expect(after.phase).toBe('won')
+  })
+
+  it('손패가 더 많으면 패배로 종료', () => {
+    const g = createInitialGame()
+    const top = topCard(g)
+    const stuck = {
+      ...g,
+      deck: [],
+      discard: [top],
+      playerHand: g.playerHand.slice(0, 4),
+      aiHand: g.aiHand.slice(0, 2),
+      turn: 'player' as const,
+    }
+    const after = drawCard(stuck, 'player')
+    expect(after.phase).toBe('lost')
   })
 })
 

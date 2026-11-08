@@ -78,6 +78,9 @@ export function useGame(difficulty: Difficulty, onEnd: (result: 'win' | 'lose') 
   // ── 플레이어 액션 ──────────────────────────────────────────
   const playPlayerCard = useCallback((cardId: string, chosenColor?: PlayColor) => {
     setState((cur) => playCard(cur, 'player', cardId, chosenColor))
+    // 카드를 내면 이번 턴 "뽑기 사용"을 초기화한다.
+    // Skip/Reverse로 턴이 유지(한 번 더)될 때도 뽑기를 다시 쓸 수 있도록.
+    setDrawnThisTurn(false)
   }, [])
 
   const drawPlayerCard = useCallback(() => {
