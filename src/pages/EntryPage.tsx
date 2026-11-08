@@ -8,6 +8,7 @@ import type { Difficulty } from '../game/types'
 import { DIFFICULTY_LABEL, DIFFICULTY_SCORE } from '../game/types'
 import { useSession } from '../session'
 import { isSupabaseConfigured, upsertStudent } from '../lib/supabase'
+import { RulesModal } from '../components/RulesModal'
 
 const DIFF_INFO: Record<Difficulty, { desc: string; emoji: string }> = {
   easy: { desc: '랜덤으로 카드를 냅니다. 처음이라면 추천!', emoji: '🙂' },
@@ -23,6 +24,7 @@ export function EntryPage() {
   const [difficulty, setDifficulty] = useState<Difficulty>('easy')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [showRules, setShowRules] = useState(false)
 
   const start = async () => {
     setError('')
@@ -66,6 +68,12 @@ export function EntryPage() {
             <span className="text-uno-blue">AI</span>
           </h1>
           <p className="text-slate-400 mt-2">사람 vs 인공지능 UNO 대결</p>
+          <button
+            onClick={() => setShowRules(true)}
+            className="mt-3 inline-flex items-center gap-1 px-4 py-1.5 rounded-full bg-slate-800 hover:bg-slate-700 border border-slate-600 text-sm font-medium"
+          >
+            📖 게임 방법 보기
+          </button>
         </div>
 
         <div className="bg-slate-800/70 rounded-2xl p-6 shadow-xl space-y-5">
@@ -146,6 +154,8 @@ export function EntryPage() {
           </div>
         </div>
       </div>
+
+      {showRules && <RulesModal onClose={() => setShowRules(false)} />}
     </div>
   )
 }
