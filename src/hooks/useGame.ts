@@ -11,6 +11,7 @@ import {
   lastDrawnPlayable,
   passTurn,
   playCard,
+  playCards,
   getValidCards,
   topCard,
 } from '../game/engine'
@@ -83,6 +84,12 @@ export function useGame(difficulty: Difficulty, onEnd: (result: 'win' | 'lose') 
     setDrawnThisTurn(false)
   }, [])
 
+  // 같은 숫자 카드 여러 장 한꺼번에 내기
+  const playPlayerCards = useCallback((cardIds: string[]) => {
+    setState((cur) => playCards(cur, 'player', cardIds))
+    setDrawnThisTurn(false)
+  }, [])
+
   const drawPlayerCard = useCallback(() => {
     setState((cur) => {
       if (cur.turn !== 'player' || cur.phase !== 'playing') return cur
@@ -116,6 +123,7 @@ export function useGame(difficulty: Difficulty, onEnd: (result: 'win' | 'lose') 
     canDraw,
     drawnThisTurn,
     playPlayerCard,
+    playPlayerCards,
     drawPlayerCard,
     passPlayerTurn,
     restart,

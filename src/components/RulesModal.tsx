@@ -126,6 +126,11 @@ export function RulesModal({ onClose }: { onClose: () => void }) {
 
           <Section title="💡 참고">
             <ul className="list-disc list-inside space-y-0.5 text-slate-400">
+              <li>
+                <b className="text-slate-200">같은 숫자</b> 카드는 한 번에 여러 장 낼 수
+                있어요. 숫자 카드를 누르면 선택되고, 같은 숫자를 더 눌러 모은 뒤 "내기"를
+                누르세요.
+              </li>
               <li>손패가 1장 남으면 자동으로 "UNO" 처리됩니다 (외치기 벌칙 없음).</li>
               <li>뽑기 더미가 떨어지면 버린 더미를 섞어 다시 사용합니다.</li>
             </ul>

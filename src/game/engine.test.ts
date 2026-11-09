@@ -7,6 +7,7 @@ import {
   drawCard,
   getValidCards,
   playCard,
+  playCards,
   topCard,
 } from './engine'
 import type { Card } from './types'
@@ -126,6 +127,54 @@ describe('덱 소진 교착 처리', () => {
     }
     const after = drawCard(stuck, 'player')
     expect(after.phase).toBe('lost')
+  })
+})
+
+describe('같은 숫자 여러 장 내기 (playCards)', () => {
+  it('같은 숫자 카드 여러 장을 한 번에 내면 모두 버린 더미로 가고 턴이 넘어간다', () => {
+    const g = createInitialGame()
+    const v = topCard(g).value ?? 5
+    const lead = { id: 'a', color: g.currentColor, kind: 'number' as const, value: v }
+    const other1 = { id: 'b', color: 'red' as const, kind: 'number' as const, value: v }
+    const other2 = { id: 'c', color: 'blue' as const, kind: 'number' as const, value: v }
+    const g2 = { ...g, playerHand: [lead, other1, other2, ...g.playerHand] }
+    const after = playCards(g2, 'player', ['a', 'b', 'c'])
+    expect(after.playerHand.find((c) => ['a', 'b', 'c'].includes(c.id))).toBeUndefined()
+    expect(after.turn).toBe('ai')
+    // 마지막 카드(blue)의 색이 현재 색이 됨
+    expect(after.currentColor).toBe('blue')
+  })
+
+  it('숫자가 서로 다르면 거부(상태 변화 없음)', () => {
+    const g = createInitialGame()
+    const a = { id: 'a', color: g.currentColor, kind: 'number' as const, value: 3 }
+    const b = { id: 'b', color: 'red' as const, kind: 'number' as const, value: 4 }
+    const g2 = { ...g, playerHand: [a, b, ...g.playerHand] }
+    const after = playCards(g2, 'player', ['a', 'b'])
+    expect(after).toBe(g2)
+  })
+
+  it('낼 수 있는 카드가 하나도 없으면 거부', () => {
+    const g = createInitialGame()
+    const bad = g.currentColor === 'red' ? 'blue' : 'red'
+    const topVal = topCard(g).value ?? 5
+    const wrong = topVal === 9 ? 1 : 9 // top 과 다른 숫자
+    const a = { id: 'a', color: bad as 'blue' | 'red', kind: 'number' as const, value: wrong }
+    const b = { id: 'b', color: bad as 'blue' | 'red', kind: 'number' as const, value: wrong }
+    const g2 = { ...g, playerHand: [a, b, ...g.playerHand] }
+    const after = playCards(g2, 'player', ['a', 'b'])
+    expect(after).toBe(g2)
+  })
+
+  it('마지막 한 장이 모두 여러 장이면 승리 처리', () => {
+    const g = createInitialGame()
+    const v = topCard(g).value ?? 5
+    const a = { id: 'a', color: g.currentColor, kind: 'number' as const, value: v }
+    const b = { id: 'b', color: 'green' as const, kind: 'number' as const, value: v }
+    const g2 = { ...g, playerHand: [a, b] }
+    const after = playCards(g2, 'player', ['a', 'b'])
+    expect(after.phase).toBe('won')
+    expect(after.playerHand.length).toBe(0)
   })
 })
 

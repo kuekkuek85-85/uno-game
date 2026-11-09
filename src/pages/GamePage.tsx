@@ -45,6 +45,7 @@ export function GamePage() {
     canDraw,
     drawnThisTurn,
     playPlayerCard,
+    playPlayerCards,
     drawPlayerCard,
     passPlayerTurn,
     restart,
@@ -52,6 +53,20 @@ export function GamePage() {
 
   // 와일드 색 선택 팝업
   const [pendingWild, setPendingWild] = useState<Card | null>(null)
+
+  // 같은 숫자 여러 장 선택 상태(선택된 카드 id 목록)
+  const [selectedIds, setSelectedIds] = useState<string[]>([])
+
+  // 내 턴이 아니게 되거나 게임이 끝나면 선택 해제
+  useEffect(() => {
+    if (state.turn !== 'player' || state.phase !== 'playing') setSelectedIds([])
+  }, [state.turn, state.phase])
+
+  // 선택된 숫자(첫 선택 카드의 value)
+  const selectedValue =
+    selectedIds.length > 0
+      ? state.playerHand.find((c) => c.id === selectedIds[0])?.value
+      : undefined
 
   // 경기 결과 저장 (한 번만)
   const savedRef = useRef(false)
@@ -75,12 +90,39 @@ export function GamePage() {
 
   const handlePlayerCardClick = (card: Card) => {
     if (state.turn !== 'player' || state.phase !== 'playing') return
+
+    // 이미 선택(여러 장 모으기) 중일 때
+    if (selectedIds.length > 0) {
+      if (selectedIds.includes(card.id)) {
+        // 선택 해제(토글)
+        setSelectedIds((ids) => ids.filter((id) => id !== card.id))
+      } else if (card.kind === 'number' && card.value === selectedValue) {
+        // 같은 숫자면 추가
+        setSelectedIds((ids) => [...ids, card.id])
+      }
+      // 다른 숫자/액션/와일드는 무시
+      return
+    }
+
+    // 선택이 없을 때(첫 클릭) — 낼 수 있는 카드만
     if (!validIds.has(card.id)) return
     if (card.color === 'wild') {
       setPendingWild(card)
+    } else if (card.kind === 'number') {
+      // 숫자 카드는 바로 내지 않고 "선택" → 같은 숫자를 더 모을 수 있음
+      setSelectedIds([card.id])
     } else {
+      // 액션 카드(Skip/Reverse/+2)는 즉시 내기
       playPlayerCard(card.id)
     }
+  }
+
+  // 선택한 카드(들) 내기
+  const playSelected = () => {
+    if (selectedIds.length === 0) return
+    if (selectedIds.length === 1) playPlayerCard(selectedIds[0])
+    else playPlayerCards(selectedIds)
+    setSelectedIds([])
   }
 
   const handleColorPick = (c: PlayColor) => {
@@ -163,7 +205,14 @@ export function GamePage() {
           <span className="text-xs text-slate-500">뽑기 더미 ({state.deck.length})</span>
           <CardBack
             size="lg"
-            onClick={canDraw ? drawPlayerCard : undefined}
+            onClick={
+              canDraw
+                ? () => {
+                    setSelectedIds([])
+                    drawPlayerCard()
+                  }
+                : undefined
+            }
           />
           {canDraw && <span className="text-xs text-uno-blue">눌러서 뽑기</span>}
         </div>
@@ -174,8 +223,29 @@ export function GamePage() {
         {state.lastEvent}
       </div>
 
+      {/* 선택한 카드 내기 바 (같은 숫자 여러 장) */}
+      {isPlayerTurn && selectedIds.length > 0 && (
+        <div className="px-4 pb-1 flex items-center justify-center gap-2">
+          <span className="text-sm text-slate-300">
+            숫자 <b className="text-white">{selectedValue}</b> · {selectedIds.length}장 선택
+          </span>
+          <button
+            onClick={playSelected}
+            className="px-4 py-1.5 rounded-lg bg-uno-green hover:bg-green-600 text-sm font-bold"
+          >
+            내기 ({selectedIds.length})
+          </button>
+          <button
+            onClick={() => setSelectedIds([])}
+            className="px-3 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-sm"
+          >
+            취소
+          </button>
+        </div>
+      )}
+
       {/* 뽑은 뒤 패스 버튼 */}
-      {isPlayerTurn && drawnThisTurn && (
+      {isPlayerTurn && drawnThisTurn && selectedIds.length === 0 && (
         <div className="px-4 pb-1 text-center">
           <button
             onClick={passPlayerTurn}
@@ -206,13 +276,33 @@ export function GamePage() {
         </div>
         <div className="flex flex-wrap gap-1.5 justify-center">
           {state.playerHand.map((card) => {
-            const playable = isPlayerTurn && validIds.has(card.id)
+            const isSelected = selectedIds.includes(card.id)
+            const inSelection = selectedIds.length > 0
+
+            let highlight = false
+            let clickable = false
+            if (isPlayerTurn) {
+              if (inSelection) {
+                if (isSelected) {
+                  clickable = true // 눌러서 선택 해제
+                } else if (card.kind === 'number' && card.value === selectedValue) {
+                  highlight = true // 같은 숫자 → 추가 가능
+                  clickable = true
+                }
+              } else if (validIds.has(card.id)) {
+                highlight = true // 낼 수 있는 카드
+                clickable = true
+              }
+            }
+
             return (
               <CardView
                 key={card.id}
                 card={card}
                 size="md"
-                disabled={!playable}
+                selected={isSelected}
+                highlight={highlight}
+                disabled={!clickable}
                 onClick={() => handlePlayerCardClick(card)}
               />
             )

@@ -210,6 +210,78 @@ export function playCard(
   }
 }
 
+// ── 같은 숫자 카드 여러 장 한꺼번에 내기 ──────────────────────
+/**
+ * who 가 같은 숫자(value)의 숫자 카드 여러 장을 한 번에 낸다. (하우스 룰)
+ * 조건: 모두 숫자 카드이며 value 가 같고, 그중 최소 1장이 현재 top 에 낼 수 있어야 함.
+ * 1장이면 playCard 와 동일하게 처리한다.
+ */
+export function playCards(
+  state: GameState,
+  who: Turn,
+  cardIds: string[],
+  chosenColor?: PlayColor,
+): GameState {
+  if (state.phase !== 'playing' || state.turn !== who) return state
+  if (cardIds.length === 0) return state
+  if (cardIds.length === 1) return playCard(state, who, cardIds[0], chosenColor)
+
+  const hand = who === 'player' ? state.playerHand : state.aiHand
+  const cards = cardIds.map((id) => hand.find((c) => c.id === id))
+  if (cards.some((c) => !c)) return state
+  const picked = cards as Card[]
+
+  // 모두 숫자 카드 + 같은 value
+  if (!picked.every((c) => c.kind === 'number')) return state
+  const v = picked[0].value
+  if (!picked.every((c) => c.value === v)) return state
+
+  // 최소 1장은 현재 top 에 낼 수 있어야 함
+  const top = topCard(state)
+  if (!picked.some((c) => canPlayCard(c, top, state.currentColor))) return state
+
+  const idSet = new Set(cardIds)
+  const newHand = hand.filter((c) => !idSet.has(c.id))
+  const discard = [...state.discard, ...picked]
+  // 모두 숫자 카드이므로 마지막 카드의 색이 현재 색이 됨
+  const newColor = picked[picked.length - 1].color as PlayColor
+
+  const playerHand = who === 'player' ? newHand : state.playerHand
+  const aiHand = who === 'player' ? state.aiHand : newHand
+
+  let playerRecentColors = state.playerRecentColors
+  if (who === 'player') {
+    playerRecentColors = [...playerRecentColors, newColor].slice(-5)
+  }
+
+  const whoLabel = who === 'player' ? '나' : 'AI'
+  let phase: Phase = state.phase
+  let nextWho: Turn = other(who)
+  let event = `${whoLabel}: ${colorKo(newColor)} ${v} ${picked.length}장 냄`
+
+  if (newHand.length === 0) {
+    phase = who === 'player' ? 'won' : 'lost'
+    nextWho = who
+    event =
+      who === 'player'
+        ? '🎉 승리! 카드를 모두 냈습니다.'
+        : '😢 패배… AI가 먼저 끝냈습니다.'
+  }
+
+  return {
+    ...state,
+    discard,
+    playerHand,
+    aiHand,
+    currentColor: newColor,
+    turn: nextWho,
+    phase,
+    turns: state.turns + 1,
+    playerRecentColors,
+    lastEvent: event,
+  }
+}
+
 // ── 카드 뽑기(턴 유지) ────────────────────────────────────────
 /** who 가 더미에서 1장 뽑는다. 턴은 그대로 둔다(뽑은 카드 처리 여부는 호출자가 결정). */
 export function drawCard(state: GameState, who: Turn): GameState {
