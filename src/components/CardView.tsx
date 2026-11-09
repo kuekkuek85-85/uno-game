@@ -61,7 +61,8 @@ export function CardView({ card, size = 'md', disabled, onClick, selected }: Pro
         'border-2 border-white/80 shadow-lg select-none transition-transform',
         card.color === 'wild' ? 'ring-2 ring-fuchsia-400/40' : '',
         clickable ? 'hover:-translate-y-2 cursor-pointer' : '',
-        disabled ? 'opacity-40 grayscale' : '',
+        // 못 내는 카드도 원래 색은 보이도록 회색(grayscale)을 빼고 살짝만 흐리게
+        disabled ? 'opacity-60 cursor-not-allowed' : '',
         selected ? '-translate-y-3 ring-4 ring-white' : '',
       ].join(' ')}
     >
