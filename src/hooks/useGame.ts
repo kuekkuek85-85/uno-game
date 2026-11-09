@@ -15,7 +15,7 @@ import {
   getValidCards,
   topCard,
 } from '../game/engine'
-import { decideAiMove } from '../game/ai'
+import { decideAiMove, type AiDecision } from '../game/ai'
 
 const AI_DELAY_MS = 900
 
@@ -54,23 +54,27 @@ export function useGame(difficulty: Difficulty, onEnd: (result: 'win' | 'lose') 
     const timer = setTimeout(() => {
       setState((cur) => {
         if (cur.turn !== 'ai' || cur.phase !== 'playing') return cur
+
+        // AI 결정을 상태에 적용하는 도우미
+        const apply = (st: typeof cur, d: AiDecision): typeof cur => {
+          if (d.type === 'playMany') return playCards(st, 'ai', d.cardIds)
+          if (d.type === 'play') return playCard(st, 'ai', d.cardId, d.chosenColor)
+          return st
+        }
+
         const decision = decideAiMove(cur, difficulty)
 
         if (decision.type === 'draw') {
-          let next = drawCard(cur, 'ai')
+          const next = drawCard(cur, 'ai')
           // 뽑은 카드가 낼 수 있으면 내고, 아니면 패스 (무한 뽑기 방지)
           if (lastDrawnPlayable(next, 'ai')) {
             const d2 = decideAiMove(next, difficulty)
-            next = d2.type === 'play'
-              ? playCard(next, 'ai', d2.cardId, d2.chosenColor)
-              : passTurn(next, 'ai')
-          } else {
-            next = passTurn(next, 'ai')
+            return d2.type === 'draw' ? passTurn(next, 'ai') : apply(next, d2)
           }
-          return next
+          return passTurn(next, 'ai')
         }
 
-        return playCard(cur, 'ai', decision.cardId, decision.chosenColor)
+        return apply(cur, decision)
       })
     }, AI_DELAY_MS)
     return () => clearTimeout(timer)
