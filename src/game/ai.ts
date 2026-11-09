@@ -12,6 +12,7 @@ import { getValidCards, topCard } from './engine'
 /** AI의 한 수 결정 결과 */
 export type AiDecision =
   | { type: 'play'; cardId: string; chosenColor?: PlayColor }
+  | { type: 'playMany'; cardIds: string[] } // 같은 숫자 여러 장 한꺼번에
   | { type: 'draw' }
 
 // ── 공통 도우미 ───────────────────────────────────────────────
@@ -127,6 +128,22 @@ export function aiMoveHard(state: GameState): AiDecision {
   const myCount = state.aiHand.length
   const oppCount = state.playerHand.length
 
+  const play = (c: Card, chosenColor?: PlayColor): AiDecision => ({
+    type: 'play',
+    cardId: c.id,
+    chosenColor,
+  })
+
+  // 숫자 카드를 낼 땐 손에 있는 같은 숫자 카드를 모두 한꺼번에 내 손패를 빨리 비운다
+  // (하우스 룰 — 사람 플레이어와 동일한 이점)
+  const playNumber = (c: Card): AiDecision => {
+    const same = state.aiHand.filter(
+      (x) => x.kind === 'number' && x.value === c.value,
+    )
+    if (same.length > 1) return { type: 'playMany', cardIds: same.map((x) => x.id) }
+    return play(c)
+  }
+
   // 와일드 색 지정: 상대가 최근 낸 색을 피하고, 내 손에 많은 색을 선호
   const chooseWildColor = (): PlayColor => {
     const recent = new Set(state.playerRecentColors)
@@ -136,52 +153,75 @@ export function aiMoveHard(state: GameState): AiDecision {
     return pool.sort((a, b) => counts[b] - counts[a])[0]
   }
 
-  // ① 공격 모드: 상대 손 ≤ 2 (UNO 임박)
-  //    Draw4 > Draw2 > Skip/Reverse 우선 사용
+  // ⭐ 턴 연쇄: Skip/Reverse 는 2인전에서 "한 번 더" 두게 해준다.
+  //    그 뒤에 이어서 낼 카드(같은 색 / 또 다른 Skip·Reverse)가 있으면
+  //    턴을 넘기지 않고 카드를 연달아 몰아낸다 → 상대에게 차례를 거의 안 줌.
+  const keepTurnCards = valid.filter(
+    (c) => c.kind === 'skip' || c.kind === 'reverse',
+  )
+  const pickChainable = (): Card | undefined => {
+    for (const k of keepTurnCards) {
+      const C = k.color as PlayColor // skip/reverse 는 색이 있는 카드
+      const hasFollowUp = state.aiHand.some(
+        (c) =>
+          c.id !== k.id &&
+          (c.color === C || c.kind === 'skip' || c.kind === 'reverse'),
+      )
+      if (hasFollowUp) return k
+    }
+    return undefined
+  }
+
+  // ① 공격 모드: 상대 손 ≤ 2 (UNO 임박) — 상대가 못 끝내게 압박
   if (oppCount <= 2) {
+    // 결정타: Draw4 > Draw2 로 상대 손패를 불린다
     const draw4 = valid.find((c) => c.kind === 'wild4')
-    if (draw4) return { type: 'play', cardId: draw4.id, chosenColor: chooseWildColor() }
+    if (draw4) return play(draw4, chooseWildColor())
     const draw2 = valid.find((c) => c.kind === 'draw2')
-    if (draw2) return { type: 'play', cardId: draw2.id }
-    const stop = valid.find((c) => c.kind === 'skip' || c.kind === 'reverse')
-    if (stop) return { type: 'play', cardId: stop.id }
-    // 공격 카드가 없으면 숫자라도 내서 턴을 넘기지 않도록 일반 휴리스틱으로
+    if (draw2) return play(draw2)
+    // 드로우가 없으면 Skip/Reverse 연쇄로 상대 차례를 계속 빼앗는다
+    const chain = pickChainable()
+    if (chain) return play(chain)
+    if (keepTurnCards.length > 0) return play(keepTurnCards[0])
+    // 그래도 없으면 보통 휴리스틱(숫자 등)
     return aiMoveNormal(state)
   }
 
-  // ② 수비 모드: 내 손 ≤ 2 (내가 유리)
-  //    액션 카드로 턴을 가져오며 손패 빨리 비우기
+  // ② 수비 모드: 내 손 ≤ 2 (내가 유리) — 턴을 유지하며 빠르게 비운다
   if (myCount <= 2) {
-    // 턴을 한 번 더 가져오는 skip/reverse 로 손패를 빠르게 소진
-    const keepTurn = valid.find((c) => c.kind === 'skip' || c.kind === 'reverse')
-    if (keepTurn) return { type: 'play', cardId: keepTurn.id }
-    // 숫자 소진
+    const chain = pickChainable()
+    if (chain) return play(chain)
+    if (keepTurnCards.length > 0) return play(keepTurnCards[0])
     const num = valid.find((c) => c.kind === 'number')
-    if (num) return { type: 'play', cardId: num.id }
-    // 그 외 아무 유효 카드 (와일드는 색 지정)
+    if (num) return playNumber(num)
     const any = valid[0]
-    if (any.color === 'wild')
-      return { type: 'play', cardId: any.id, chosenColor: chooseWildColor() }
-    return { type: 'play', cardId: any.id }
+    return any.color === 'wild' ? play(any, chooseWildColor()) : play(any)
   }
 
-  // ③ 그 외: Level 2 휴리스틱 사용 (단, 와일드/Draw4 는 아껴둠)
-  //    결정적이지 않은 상황에서는 숫자·일반 액션을 먼저 쓴다.
+  // ③ 중반: 턴 연쇄로 카드를 몰아내는 것을 최우선, 와일드/Draw4 는 아껴둔다
+  const chain = pickChainable()
+  if (chain) return play(chain)
+
   const nonWild = valid.filter((c) => c.color !== 'wild')
   if (nonWild.length > 0) {
-    // 숫자 먼저, 그다음 일반 액션
     const numbers = nonWild.filter((c) => c.kind === 'number')
-    const keep = mostCommonColor(state.aiHand)
     if (numbers.length > 0) {
-      const best = numbers.find((c) => c.color === keep) ?? numbers[0]
-      return { type: 'play', cardId: best.id }
+      // 손에 가장 많은 색을 유지(연쇄·대응 유연성)
+      const keep = mostCommonColor(state.aiHand)
+      const counts = countColors(state.aiHand)
+      const best =
+        numbers.find((c) => c.color === keep) ??
+        [...numbers].sort(
+          (a, b) => counts[b.color as PlayColor] - counts[a.color as PlayColor],
+        )[0]
+      return playNumber(best)
     }
-    return { type: 'play', cardId: nonWild[0].id }
+    // 숫자가 없으면 일반 액션(Draw2 등)
+    return play(nonWild[0])
   }
 
   // 와일드만 남은 경우에만 사용
-  const wild = valid[0]
-  return { type: 'play', cardId: wild.id, chosenColor: chooseWildColor() }
+  return play(valid[0], chooseWildColor())
 }
 
 // ── 난이도 분배 ───────────────────────────────────────────────
