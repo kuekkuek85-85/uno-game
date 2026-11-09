@@ -41,12 +41,23 @@ type Props = {
   disabled?: boolean
   onClick?: () => void
   selected?: boolean
+  /** 낼 수 있는/고를 수 있는 카드 강조(초록 테두리 + 살짝 올림) */
+  highlight?: boolean
 }
 
-export function CardView({ card, size = 'md', disabled, onClick, selected }: Props) {
+export function CardView({
+  card,
+  size = 'md',
+  disabled,
+  onClick,
+  selected,
+  highlight,
+}: Props) {
   const bg = COLOR_BG[card.color] ?? 'bg-slate-700'
   const clickable = Boolean(onClick) && !disabled
   const sym = symbol(card.kind, card.value)
+  // 와일드 기본 테두리는 강조/선택 상태가 아닐 때만 표시(테두리 충돌 방지)
+  const showWildRing = card.color === 'wild' && !highlight && !selected
 
   return (
     <button
@@ -59,10 +70,10 @@ export function CardView({ card, size = 'md', disabled, onClick, selected }: Pro
         bg,
         'relative flex items-center justify-center font-black text-white',
         'border-2 border-white/80 shadow-lg select-none transition-transform',
-        card.color === 'wild' ? 'ring-2 ring-fuchsia-400/40' : '',
-        clickable ? 'hover:-translate-y-2 cursor-pointer' : '',
-        // 못 내는 카드도 원래 색은 보이도록 회색(grayscale)을 빼고 살짝만 흐리게
-        disabled ? 'opacity-60 cursor-not-allowed' : '',
+        showWildRing ? 'ring-2 ring-fuchsia-400/40' : '',
+        clickable ? 'hover:-translate-y-2 cursor-pointer' : 'cursor-default',
+        // ❗ 못 내는 카드도 회색 없이 원래 색 그대로 — 강조만으로 구분
+        highlight && !selected ? '-translate-y-1 ring-2 ring-emerald-300/80' : '',
         selected ? '-translate-y-3 ring-4 ring-white' : '',
       ].join(' ')}
     >
