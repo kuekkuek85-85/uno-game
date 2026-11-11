@@ -317,6 +317,31 @@ export function drawCard(state: GameState, who: Turn): GameState {
   }
 }
 
+/**
+ * 벌칙 뽑기: 턴과 무관하게 who 에게 n장을 뽑아 준다.
+ * (우노 미콜 벌칙 등 — 현재 턴이 상대일 수도 있으므로 turn 검사를 하지 않는다)
+ */
+export function drawPenalty(
+  state: GameState,
+  who: Turn,
+  n: number = 1,
+): GameState {
+  if (state.phase !== 'playing') return state
+  const r = drawN(state.deck, state.discard, n)
+  if (r.drawn.length === 0) return state
+  const playerHand =
+    who === 'player' ? [...state.playerHand, ...r.drawn] : state.playerHand
+  const aiHand = who === 'ai' ? [...state.aiHand, ...r.drawn] : state.aiHand
+  return {
+    ...state,
+    deck: r.deck,
+    discard: r.discard,
+    playerHand,
+    aiHand,
+    lastEvent: `${who === 'player' ? '나' : 'AI'}: 우노 벌칙 +${r.drawn.length}장`,
+  }
+}
+
 /** 턴을 상대에게 넘긴다(패스). */
 export function passTurn(state: GameState, who: Turn): GameState {
   if (state.phase !== 'playing' || state.turn !== who) return state
