@@ -5,6 +5,7 @@ import {
   canPlayCard,
   createInitialGame,
   drawCard,
+  drawPenalty,
   getValidCards,
   playCard,
   playCards,
@@ -175,6 +176,24 @@ describe('같은 숫자 여러 장 내기 (playCards)', () => {
     const after = playCards(g2, 'player', ['a', 'b'])
     expect(after.phase).toBe('won')
     expect(after.playerHand.length).toBe(0)
+  })
+})
+
+describe('우노 벌칙 뽑기 (drawPenalty)', () => {
+  it('턴과 무관하게 지정한 사람에게 카드를 추가한다', () => {
+    const g = createInitialGame() // turn=player
+    const beforeAi = g.aiHand.length
+    // 현재 턴이 player여도 ai에게 벌칙을 줄 수 있어야 함
+    const after = drawPenalty(g, 'ai', 1)
+    expect(after.aiHand.length).toBe(beforeAi + 1)
+    expect(after.turn).toBe(g.turn) // 턴은 바뀌지 않음
+  })
+
+  it('플레이어에게도 줄 수 있다', () => {
+    const g = createInitialGame()
+    const before = g.playerHand.length
+    const after = drawPenalty(g, 'player', 2)
+    expect(after.playerHand.length).toBe(before + 2)
   })
 })
 

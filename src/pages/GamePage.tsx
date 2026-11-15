@@ -44,6 +44,9 @@ export function GamePage() {
     validIds,
     canDraw,
     drawnThisTurn,
+    uno,
+    toast,
+    pressUno,
     playPlayerCard,
     playPlayerCards,
     drawPlayerCard,
@@ -309,6 +312,30 @@ export function GamePage() {
           })}
         </div>
       </section>
+
+      {/* 토스트 (우노/벌칙 알림) */}
+      {toast && (
+        <div className="fixed top-16 left-1/2 -translate-x-1/2 z-40 px-4 py-2 rounded-full bg-slate-900/95 border border-slate-600 text-sm font-bold shadow-lg animate-pop-in whitespace-nowrap">
+          {toast}
+        </div>
+      )}
+
+      {/* 우노! 버튼 — 내가 1장이면 외치기, AI가 깜빡했으면 먼저 외쳐 잡기 */}
+      {uno && (
+        <div className="fixed inset-x-0 bottom-28 z-40 flex flex-col items-center gap-1 pointer-events-none">
+          <button
+            onClick={pressUno}
+            className="pointer-events-auto px-10 py-4 rounded-full bg-uno-red hover:bg-red-600 text-white text-2xl font-black shadow-2xl ring-4 ring-white/70 animate-pulse"
+          >
+            우노!
+          </button>
+          <span className="text-xs text-slate-200 bg-slate-900/80 px-2 py-0.5 rounded-full pointer-events-none">
+            {uno.who === 'player'
+              ? '빨리 외치세요! (안 외치면 벌칙 +1장)'
+              : 'AI가 깜빡했어요! 먼저 외치면 AI가 +1장'}
+          </span>
+        </div>
+      )}
 
       {/* 와일드 색 선택 */}
       {pendingWild && (
