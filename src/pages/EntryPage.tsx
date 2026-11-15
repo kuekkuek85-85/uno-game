@@ -26,7 +26,7 @@ export function EntryPage() {
   const [error, setError] = useState('')
   const [showRules, setShowRules] = useState(false)
 
-  const start = async () => {
+  const enter = async (dest: '/play' | '/pvp') => {
     setError('')
     if (!studentNo.trim() || !name.trim()) {
       setError('학번과 이름을 모두 입력하세요.')
@@ -35,13 +35,8 @@ export function EntryPage() {
     setLoading(true)
     try {
       const student = await upsertStudent(studentNo.trim(), name.trim())
-      setSession({
-        student,
-        studentNo: studentNo.trim(),
-        name: name.trim(),
-        difficulty,
-      })
-      nav('/play')
+      setSession({ student, studentNo: studentNo.trim(), name: name.trim(), difficulty })
+      nav(dest)
     } catch {
       // Supabase 오류가 나도 연습 모드로 게임은 시작
       setSession({
@@ -50,11 +45,13 @@ export function EntryPage() {
         name: name.trim(),
         difficulty,
       })
-      nav('/play')
+      nav(dest)
     } finally {
       setLoading(false)
     }
   }
+  const start = () => enter('/play')
+  const startPvp = () => enter('/pvp')
 
   return (
     <div className="min-h-full flex flex-col items-center justify-center p-4">
@@ -136,13 +133,25 @@ export function EntryPage() {
 
           {error && <p className="text-sm text-red-400">{error}</p>}
 
-          <button
-            onClick={start}
-            disabled={loading}
-            className="w-full py-3 rounded-xl bg-uno-red hover:bg-red-600 font-bold text-lg shadow-lg disabled:opacity-60 transition-colors"
-          >
-            {loading ? '입장 중…' : '게임 시작'}
-          </button>
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              onClick={start}
+              disabled={loading}
+              className="py-3 rounded-xl bg-uno-red hover:bg-red-600 font-bold text-lg shadow-lg disabled:opacity-60 transition-colors"
+            >
+              {loading ? '입장 중…' : '🤖 AI와 대전'}
+            </button>
+            <button
+              onClick={startPvp}
+              disabled={loading}
+              className="py-3 rounded-xl bg-uno-green hover:bg-green-600 font-bold text-lg shadow-lg disabled:opacity-60 transition-colors"
+            >
+              {loading ? '입장 중…' : '👥 친구와 대전'}
+            </button>
+          </div>
+          <p className="text-xs text-slate-500 text-center -mt-2">
+            친구와 대전: 접속 순서대로 1:1 매칭 (짝이 없으면 잠깐 AI와 연습)
+          </p>
 
           <div className="flex justify-center gap-4 text-sm text-slate-400">
             <Link to="/leaderboard" className="hover:text-white">
