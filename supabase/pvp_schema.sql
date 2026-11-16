@@ -79,21 +79,45 @@ begin
      set status = 'abandoned'
    where host_id = p_player and status = 'waiting';
 
-  -- 1) 들어갈 수 있는 가장 오래된 대기 방 (직전 상대 회피)
+  -- 유령 방 청소: 호스트가 응답 없는(하트비트 끊긴) 대기 방은 버린다.
+  --   - 60초 넘게 대기 중이거나, 호스트 last_seen 이 12초 넘게 끊긴 방
+  update public.pvp_rooms r
+     set status = 'abandoned'
+   where r.status = 'waiting'
+     and (
+       r.created_at < now() - interval '60 seconds'
+       or not exists (
+         select 1 from public.pvp_players hp
+          where hp.id = r.host_id
+            and hp.last_seen > now() - interval '12 seconds'
+       )
+     );
+
+  -- 1) 들어갈 수 있는 가장 오래된 대기 방 (직전 상대 회피 + 살아있는 호스트만)
   select * into room
     from public.pvp_rooms r
    where r.status = 'waiting'
      and r.host_id <> p_player
      and (me.last_opponent is null or r.host_id <> me.last_opponent)
+     and exists (
+       select 1 from public.pvp_players hp
+        where hp.id = r.host_id
+          and hp.last_seen > now() - interval '12 seconds'
+     )
    order by r.created_at asc
    limit 1;
 
-  -- 회피 조건 때문에 없을 수도 있으니, 그땐 조건 완화해서 재시도
+  -- 회피 조건 때문에 없을 수도 있으니, 그땐 조건 완화해서 재시도(살아있는 호스트 조건은 유지)
   if not found then
     select * into room
       from public.pvp_rooms r
      where r.status = 'waiting'
        and r.host_id <> p_player
+       and exists (
+         select 1 from public.pvp_players hp
+          where hp.id = r.host_id
+            and hp.last_seen > now() - interval '12 seconds'
+       )
      order by r.created_at asc
      limit 1;
   end if;

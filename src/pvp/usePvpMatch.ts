@@ -8,6 +8,7 @@ import {
   backToPool,
   cancelWaitingRoom,
   getRoom,
+  heartbeat,
   isPvpAvailable,
   joinPool,
   requestMatch,
@@ -16,6 +17,7 @@ import {
 import type { Seat } from './types'
 
 const AI_FALLBACK_MS = 10000
+const SEARCH_POLL_MS = 1500
 
 export type MatchPhase = 'connecting' | 'searching' | 'matched' | 'ai' | 'error'
 
@@ -25,12 +27,12 @@ export function usePvpMatch(name: string, studentId: string | null) {
   const [mySeat, setMySeat] = useState<Seat>('host')
   const [opponentName, setOpponentName] = useState<string>('상대')
   const playerIdRef = useRef<string | null>(null)
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const unsubRef = useRef<() => void>(() => {})
 
   const clearSearch = () => {
-    if (timerRef.current) clearTimeout(timerRef.current)
-    timerRef.current = null
+    if (pollRef.current) clearInterval(pollRef.current)
+    pollRef.current = null
     unsubRef.current()
     unsubRef.current = () => {}
   }
@@ -57,27 +59,31 @@ export function usePvpMatch(name: string, studentId: string | null) {
     // host로 대기
     setMySeat('host')
     setPhase('searching')
-    // guest 입장 감지
+    const matched = (name: string) => {
+      clearSearch()
+      setOpponentName(name)
+      setPhase('matched')
+    }
+    // guest 입장 감지(Realtime)
     unsubRef.current = subscribeRoom(res.room_id, (r) => {
-      if (r.status === 'active') {
-        clearSearch()
-        setOpponentName(r.guest_name ?? '상대')
-        setPhase('matched')
-      }
+      if (r.status === 'active') matched(r.guest_name ?? '상대')
     })
-    // 10초 내 짝 없으면 AI 폴백
-    timerRef.current = setTimeout(async () => {
+    // 폴백: 1.5초마다 방 확인 + 하트비트(Realtime가 느리거나 끊겨도 매칭을 잡음)
+    let elapsed = 0
+    pollRef.current = setInterval(async () => {
+      elapsed += SEARCH_POLL_MS
+      heartbeat(pid)
       const r = await getRoom(res.room_id)
       if (r && r.status === 'active') {
-        clearSearch()
-        setOpponentName(r.guest_name ?? '상대')
-        setPhase('matched')
+        matched(r.guest_name ?? '상대')
         return
       }
-      clearSearch()
-      await cancelWaitingRoom(res.room_id, pid)
-      setPhase('ai')
-    }, AI_FALLBACK_MS)
+      if (elapsed >= AI_FALLBACK_MS) {
+        clearSearch()
+        await cancelWaitingRoom(res.room_id, pid)
+        setPhase('ai')
+      }
+    }, SEARCH_POLL_MS)
   }, [])
 
   // 최초 입장
