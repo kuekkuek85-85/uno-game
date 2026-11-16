@@ -229,6 +229,18 @@ function PvpActiveGame({
 
   return (
     <Screen title={`vs ${opponentName}`} onBeforeLeave={leaveIfPlaying}>
+      {pg.myTurn && pg.secondsLeft !== null && (
+        <div
+          className={[
+            'fixed top-14 left-1/2 -translate-x-1/2 z-30 px-3 py-1 rounded-full border text-sm font-bold',
+            pg.secondsLeft <= 2
+              ? 'bg-uno-red/90 border-red-300 text-white animate-pulse'
+              : 'bg-slate-900/90 border-slate-600 text-slate-200',
+          ].join(' ')}
+        >
+          ⏱ {pg.secondsLeft}초 안에 내기
+        </div>
+      )}
       <GameBoard {...controller} />
       {result && (
         <ResultModal

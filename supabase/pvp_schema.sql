@@ -79,6 +79,13 @@ begin
      set status = 'abandoned'
    where host_id = p_player and status = 'waiting';
 
+  -- 재입장: 내가 아직 들어가 있던 active 방이 있으면 상대 부전승으로 정리
+  --   (게임을 떠나 새로 매칭을 요청한 것이므로 상대를 묶어두지 않는다)
+  update public.pvp_rooms
+     set status = 'abandoned',
+         winner_seat = case when host_id = p_player then 'guest' else 'host' end
+   where status = 'active' and (host_id = p_player or guest_id = p_player);
+
   -- 유령 방 청소: 호스트가 응답 없는(하트비트 끊긴) 대기 방은 버린다.
   --   - 60초 넘게 대기 중이거나, 호스트 last_seen 이 12초 넘게 끊긴 방
   update public.pvp_rooms r
