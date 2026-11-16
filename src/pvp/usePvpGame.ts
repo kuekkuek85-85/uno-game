@@ -20,6 +20,7 @@ import {
 } from '../game/engine'
 import {
   abandonRoom,
+  backToPool,
   finishRoom,
   getPlayerLastSeen,
   getRoom,
@@ -206,6 +207,17 @@ export function usePvpGame(
     commit(passTurn(state, myTurnSlot))
   }
 
+  // 나가기(기권): 상대를 즉시 부전승으로 풀어주고 나는 풀로 복귀
+  const leave = () => {
+    const r = roomRef.current
+    if (!endedRef.current && r && (r.status === 'active' || r.status === 'waiting')) {
+      endedRef.current = true
+      const oppSeat: Seat = mySeat === 'host' ? 'guest' : 'host'
+      abandonRoom(roomId, oppSeat) // 상대 부전승
+    }
+    backToPool(playerId)
+  }
+
   return {
     room,
     state,
@@ -219,5 +231,6 @@ export function usePvpGame(
     playMany,
     draw,
     pass,
+    leave,
   }
 }

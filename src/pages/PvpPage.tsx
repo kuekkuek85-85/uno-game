@@ -188,6 +188,11 @@ function PvpActiveGame({
     setResult({ win: r.winnerSeat === mySeat, abandoned: r.abandoned })
   const pg = usePvpGame(roomId, mySeat, playerId, onEnd)
 
+  // 게임이 끝나지 않았는데 나가면 기권(상대 부전승) 처리
+  const leaveIfPlaying = () => {
+    if (!result) pg.leave()
+  }
+
   if (!pg.state) {
     return (
       <Centered>
@@ -196,6 +201,9 @@ function PvpActiveGame({
           <span className="text-uno-green">{opponentName}</span> 님과 매칭됨!
         </p>
         <p className="text-sm text-slate-400 mt-1">게임을 준비하는 중…</p>
+        <div className="mt-6">
+          <HomeButton onBeforeLeave={leaveIfPlaying} />
+        </div>
       </Centered>
     )
   }
@@ -220,7 +228,7 @@ function PvpActiveGame({
   }
 
   return (
-    <Screen title={`vs ${opponentName}`}>
+    <Screen title={`vs ${opponentName}`} onBeforeLeave={leaveIfPlaying}>
       <GameBoard {...controller} />
       {result && (
         <ResultModal
@@ -243,12 +251,26 @@ function PvpActiveGame({
 }
 
 // ── 공용 작은 컴포넌트들 ────────────────────────────────────
-function Screen({ title, children }: { title: string; children: React.ReactNode }) {
+function Screen({
+  title,
+  children,
+  onBeforeLeave,
+}: {
+  title: string
+  children: React.ReactNode
+  onBeforeLeave?: () => void
+}) {
   const nav = useNavigate()
   return (
     <div className="min-h-full flex flex-col max-w-3xl mx-auto w-full">
       <header className="flex items-center justify-between px-4 py-3 text-sm">
-        <button onClick={() => nav('/')} className="text-slate-400 hover:text-white">
+        <button
+          onClick={() => {
+            onBeforeLeave?.()
+            nav('/')
+          }}
+          className="text-slate-400 hover:text-white"
+        >
           ← 나가기
         </button>
         <span className="font-bold text-slate-200">{title}</span>
@@ -318,11 +340,14 @@ function Centered({ children }: { children: React.ReactNode }) {
   )
 }
 
-function HomeButton() {
+function HomeButton({ onBeforeLeave }: { onBeforeLeave?: () => void }) {
   const nav = useNavigate()
   return (
     <button
-      onClick={() => nav('/')}
+      onClick={() => {
+        onBeforeLeave?.()
+        nav('/')
+      }}
       className="px-4 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-sm"
     >
       ← 처음으로
