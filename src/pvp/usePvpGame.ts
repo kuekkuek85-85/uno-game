@@ -20,6 +20,7 @@ import {
 } from '../game/engine'
 import {
   abandonRoom,
+  backToPool,
   finishRoom,
   getPlayerLastSeen,
   getRoom,
@@ -31,8 +32,9 @@ import {
 import { seatToTurn, turnToSeat, type PvpRoom, type Seat } from './types'
 
 const HEARTBEAT_MS = 5000
-const POLL_MS = 2500 // Realtime가 끊겨도 상태를 따라잡는 폴백 주기
+const POLL_MS = 1200 // Realtime가 끊겨도 상태를 따라잡는 폴백 주기
 const ABANDON_MS = 45000 // 모바일 백그라운드 등으로 인한 오판을 줄이려 넉넉히
+const TURN_LIMIT_S = 5 // 내 차례 제한 시간(초과 시 자동 패스)
 
 export type PvpResult = { winnerSeat: Seat; abandoned: boolean }
 
@@ -44,6 +46,7 @@ export function usePvpGame(
 ) {
   const [room, setRoom] = useState<PvpRoom | null>(null)
   const [drawnThisTurn, setDrawnThisTurn] = useState(false)
+  const [secondsLeft, setSecondsLeft] = useState<number | null>(null)
   const endedRef = useRef(false)
   const initRef = useRef(false)
   const roomRef = useRef<PvpRoom | null>(null)
@@ -51,15 +54,15 @@ export function usePvpGame(
 
   const myTurnSlot = seatToTurn(mySeat)
 
-  // 서버 방 상태를 안전하게 병합: 종료 상태는 항상, 그 외엔 더 최신(updated_at)일 때만 반영.
-  // (내 낙관적 갱신을 오래된 폴링 결과가 되돌리는 것을 방지)
+  // 서버 방 상태를 안전하게 병합: 종료 상태는 항상, 그 외엔 state.turns(단조 증가)로 판단.
+  // (클럭 의존 제거 → 양쪽 화면이 어긋나거나 턴이 교착되는 문제 방지)
   const mergeRoom = (r: PvpRoom) =>
     setRoom((prev) => {
       if (!prev) return r
       if (r.status === 'finished' || r.status === 'abandoned') return r
-      return new Date(r.updated_at).getTime() >= new Date(prev.updated_at).getTime()
-        ? r
-        : prev
+      const rt = r.state?.turns ?? -1
+      const pt = prev.state?.turns ?? -1
+      return rt >= pt ? r : prev
     })
 
   // 차례가 바뀌면 "뽑기 사용" 초기화
@@ -97,25 +100,20 @@ export function usePvpGame(
     return () => document.removeEventListener('visibilitychange', onVisible)
   }, [playerId])
 
-  // ── guest: 초기 게임 상태 생성(1회) ────────────────────────
+  // ── 초기 게임 상태 생성(양쪽 누구나, 동시성 안전) ──────────
+  //   state가 비어있으면 먼저 쓰는 쪽이 초기화. 상대가 늦거나 유령이어도 게임이 시작됨.
   useEffect(() => {
     if (initRef.current) return
-    if (mySeat !== 'guest') return
     if (!room || room.status !== 'active' || room.state) return
     initRef.current = true
     const initial = createInitialGame()
     const firstSeat: Seat = Math.random() < 0.5 ? 'host' : 'guest'
-    // 엔진 상태의 turn도 선공 좌석에 맞춘다
     initial.turn = seatToTurn(firstSeat)
     initial.lastEvent = '게임 시작!'
-    initRoomState(roomId, initial, firstSeat)
-    // 게스트 화면에도 즉시 반영
-    setRoom((prev) =>
-      prev
-        ? { ...prev, state: initial, turn_seat: firstSeat, updated_at: new Date().toISOString() }
-        : prev,
-    )
-  }, [room, mySeat, roomId])
+    initRoomState(roomId, initial, firstSeat).then((won) => {
+      if (won) setRoom(won) // 내가 초기화 성공 → 즉시 반영 (실패 시 poll이 가져옴)
+    })
+  }, [room, roomId])
 
   // ── 종료 감지(상대가 끝냈을 때) ────────────────────────────
   useEffect(() => {
@@ -169,22 +167,26 @@ export function usePvpGame(
       : [],
   )
 
-  // ── 수 두기(공유 상태 갱신) ────────────────────────────────
-  const commit = (next: GameState) => {
+  // ── 수 두기(서버 권위 + 실패 시 복구) ──────────────────────
+  const commit = async (next: GameState) => {
     if (next.phase === 'won' || next.phase === 'lost') {
       const winnerSeat: Seat = next.phase === 'won' ? 'host' : 'guest'
       endedRef.current = true
       finishRoom(roomId, winnerSeat, next)
       onEnd({ winnerSeat, abandoned: false })
-    } else {
-      pushMove(roomId, next, turnToSeat(next.turn))
+      setRoom((r) => (r ? { ...r, state: next, status: 'finished', winner_seat: winnerSeat } : r))
+      return
     }
-    // 낙관적 반영 (updated_at을 올려 폴링 폴백이 이 수를 되돌리지 않게 함)
-    setRoom((r) =>
-      r
-        ? { ...r, state: next, turn_seat: turnToSeat(next.turn), updated_at: new Date().toISOString() }
-        : r,
-    )
+    // 즉시 반영(체감 지연 최소화) 후 서버 기록 → 서버가 돌려준 최신 행으로 확정
+    setRoom((r) => (r ? { ...r, state: next, turn_seat: turnToSeat(next.turn) } : r))
+    const updated = await pushMove(roomId, next, turnToSeat(next.turn))
+    if (updated) {
+      setRoom(updated)
+    } else {
+      // 쓰기 실패/응답 유실 → 서버 진실로 강제 복구(내 낙관적 갱신을 되돌려 턴 교착 방지)
+      const r = await getRoom(roomId)
+      if (r) setRoom(r)
+    }
   }
 
   const play = (cardId: string, chosenColor?: PlayColor) => {
@@ -206,6 +208,39 @@ export function usePvpGame(
     commit(passTurn(state, myTurnSlot))
   }
 
+  // ── 5초 턴 타이머: 내 차례에 안 내면 자동 패스(다음 사람 턴으로) ──
+  useEffect(() => {
+    if (!myTurn || !state || room?.status !== 'active') {
+      setSecondsLeft(null)
+      return
+    }
+    let left = TURN_LIMIT_S
+    setSecondsLeft(left)
+    const tick = setInterval(() => {
+      left -= 1
+      if (left <= 0) {
+        clearInterval(tick)
+        setSecondsLeft(0)
+        commit(passTurn(state, myTurnSlot)) // 시간 초과 → 턴 넘김
+      } else {
+        setSecondsLeft(left)
+      }
+    }, 1000)
+    return () => clearInterval(tick)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [myTurn, room?.turn_seat, room?.status, state?.turns])
+
+  // 나가기(기권): 상대를 즉시 부전승으로 풀어주고 나는 풀로 복귀
+  const leave = () => {
+    const r = roomRef.current
+    if (!endedRef.current && r && (r.status === 'active' || r.status === 'waiting')) {
+      endedRef.current = true
+      const oppSeat: Seat = mySeat === 'host' ? 'guest' : 'host'
+      abandonRoom(roomId, oppSeat) // 상대 부전승
+    }
+    backToPool(playerId)
+  }
+
   return {
     room,
     state,
@@ -215,9 +250,11 @@ export function usePvpGame(
     validIds,
     drawnThisTurn,
     canDraw: myTurn && !drawnThisTurn,
+    secondsLeft,
     play,
     playMany,
     draw,
     pass,
+    leave,
   }
 }

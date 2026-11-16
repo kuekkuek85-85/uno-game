@@ -93,30 +93,40 @@ export async function getRoom(roomId: string): Promise<PvpRoom | null> {
   return data as PvpRoom
 }
 
-/** 초기 게임 상태를 방에 기록(guest가 매칭 성사 시 1회) */
+/**
+ * 초기 게임 상태를 방에 기록. state가 아직 비어있을 때만(=is.null) 성공.
+ * 성공하면 갱신된 방을 반환, 이미 누가 초기화했으면 null(동시성 안전 → 양쪽 누구나 호출 가능).
+ */
 export async function initRoomState(
   roomId: string,
   state: GameState,
   turnSeat: Seat,
-) {
-  if (!supabase) return
-  await supabase
+): Promise<PvpRoom | null> {
+  if (!supabase) return null
+  const { data } = await supabase
     .from('pvp_rooms')
     .update({ state, turn_seat: turnSeat, updated_at: new Date().toISOString() })
     .eq('id', roomId)
+    .is('state', null)
+    .select()
+    .maybeSingle()
+  return (data as PvpRoom) ?? null
 }
 
-/** 한 수 둔 뒤 공유 상태 갱신 */
+/** 한 수 둔 뒤 공유 상태 갱신 → 서버의 최신 행을 반환(권위) */
 export async function pushMove(
   roomId: string,
   state: GameState,
   turnSeat: Seat,
-) {
-  if (!supabase) return
-  await supabase
+): Promise<PvpRoom | null> {
+  if (!supabase) return null
+  const { data } = await supabase
     .from('pvp_rooms')
     .update({ state, turn_seat: turnSeat, updated_at: new Date().toISOString() })
     .eq('id', roomId)
+    .select()
+    .maybeSingle()
+  return (data as PvpRoom) ?? null
 }
 
 /** 게임 종료 기록 */
