@@ -8,18 +8,53 @@ import type { MatchResult, PvpRoom, Seat } from './types'
 
 export const isPvpAvailable = Boolean(supabase)
 
-/** 대기 풀에 플레이어 등록(없으면 생성) → player id 반환 */
+const PLAYER_ID_KEY = 'pvp.playerId'
+
+/**
+ * 대기 풀에 플레이어 등록 → player id 반환.
+ * 재입장 시 같은 id를 재사용(localStorage)해 직전 상대 기록을 보존하고
+ * 유령 행이 쌓이지 않게 한다.
+ */
 export async function joinPool(
   name: string,
   studentId: string | null,
 ): Promise<string | null> {
   if (!supabase) return null
+  const now = new Date().toISOString()
+
+  // 1) 저장된 id가 아직 유효하면 재사용
+  try {
+    const existing = localStorage.getItem(PLAYER_ID_KEY)
+    if (existing) {
+      const { data } = await supabase
+        .from('pvp_players')
+        .select('id')
+        .eq('id', existing)
+        .maybeSingle()
+      if (data) {
+        await supabase
+          .from('pvp_players')
+          .update({ name, student_id: studentId, status: 'idle', room_id: null, last_seen: now })
+          .eq('id', existing)
+        return existing
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+
+  // 2) 새로 생성
   const { data, error } = await supabase
     .from('pvp_players')
-    .insert({ name, student_id: studentId, status: 'idle' })
+    .insert({ name, student_id: studentId, status: 'idle', last_seen: now })
     .select('id')
     .single()
   if (error || !data) return null
+  try {
+    localStorage.setItem(PLAYER_ID_KEY, data.id as string)
+  } catch {
+    /* ignore */
+  }
   return data.id as string
 }
 
