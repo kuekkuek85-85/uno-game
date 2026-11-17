@@ -129,6 +129,21 @@ export async function pushMove(
   return (data as PvpRoom) ?? null
 }
 
+/** 우노 외치기/잡기 등 턴을 바꾸지 않는 상태 갱신 → 최신 행 반환 */
+export async function pushUno(
+  roomId: string,
+  state: GameState,
+): Promise<PvpRoom | null> {
+  if (!supabase) return null
+  const { data } = await supabase
+    .from('pvp_rooms')
+    .update({ state, updated_at: new Date().toISOString() })
+    .eq('id', roomId)
+    .select()
+    .maybeSingle()
+  return (data as PvpRoom) ?? null
+}
+
 /** 게임 종료 기록 */
 export async function finishRoom(roomId: string, winnerSeat: Seat, state: GameState) {
   if (!supabase) return

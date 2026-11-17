@@ -11,6 +11,7 @@ import type { GameState, PlayColor } from '../game/types'
 import {
   createInitialGame,
   drawCard,
+  drawPenalty,
   getValidCards,
   lastDrawnPlayable,
   passTurn,
@@ -27,6 +28,7 @@ import {
   heartbeat,
   initRoomState,
   pushMove,
+  pushUno,
   subscribeRoom,
 } from './api'
 import { seatToTurn, turnToSeat, type PvpRoom, type Seat } from './types'
@@ -34,7 +36,7 @@ import { seatToTurn, turnToSeat, type PvpRoom, type Seat } from './types'
 const HEARTBEAT_MS = 5000
 const POLL_MS = 1200 // Realtime가 끊겨도 상태를 따라잡는 폴백 주기
 const ABANDON_MS = 45000 // 모바일 백그라운드 등으로 인한 오판을 줄이려 넉넉히
-const TURN_LIMIT_S = 5 // 내 차례 제한 시간(초과 시 자동 패스)
+const TURN_LIMIT_S = 10 // 내 차례 제한 시간(초과 시 자동 패스)
 
 export type PvpResult = { winnerSeat: Seat; abandoned: boolean }
 
@@ -169,6 +171,10 @@ export function usePvpGame(
 
   // ── 수 두기(서버 권위 + 실패 시 복구) ──────────────────────
   const commit = async (next: GameState) => {
+    // 이번 수로 둔 사람이 손패 1장이 되면 "우노!" 대상으로 표시(아니면 해제).
+    const moverHand = myTurnSlot === 'player' ? next.playerHand : next.aiHand
+    next.unoPending = moverHand.length === 1 ? myTurnSlot : null
+
     if (next.phase === 'won' || next.phase === 'lost') {
       const winnerSeat: Seat = next.phase === 'won' ? 'host' : 'guest'
       endedRef.current = true
@@ -206,6 +212,29 @@ export function usePvpGame(
   const pass = () => {
     if (!state || !myTurn) return
     commit(passTurn(state, myTurnSlot))
+  }
+
+  // ── 우노! 버튼 (사람 vs 사람) ─────────────────────────────
+  // · 내가 1장일 때 누르면: 안전
+  // · 상대가 1장인데 안 외쳤을 때 누르면: 내가 먼저 외쳐 상대 +1장
+  const unoPendingSeat = state?.unoPending ?? null
+  const unoActive = Boolean(unoPendingSeat && room?.status === 'active')
+  const unoIsMine = unoPendingSeat === myTurnSlot
+
+  const pressUno = async () => {
+    const st = roomRef.current?.state
+    const pending = st?.unoPending
+    if (!st || !pending || roomRef.current?.status !== 'active') return
+    let next: GameState
+    if (pending === myTurnSlot) {
+      next = { ...st, unoPending: null, lastEvent: '우노! 🎉' }
+    } else {
+      next = { ...drawPenalty(st, pending, 1), unoPending: null }
+      next.lastEvent = '우노! 🎯 상대가 못 외쳐서 +1장'
+    }
+    setRoom((r) => (r ? { ...r, state: next } : r))
+    const updated = await pushUno(roomId, next)
+    if (updated) setRoom(updated)
   }
 
   // ── 5초 턴 타이머: 내 차례에 안 내면 자동 패스(다음 사람 턴으로) ──
@@ -251,6 +280,9 @@ export function usePvpGame(
     drawnThisTurn,
     canDraw: myTurn && !drawnThisTurn,
     secondsLeft,
+    unoActive,
+    unoIsMine,
+    pressUno,
     play,
     playMany,
     draw,
