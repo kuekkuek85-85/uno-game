@@ -40,6 +40,8 @@ export type GameState = {
   playerRecentColors: PlayColor[]
   /** 마지막 액션 로그 메시지 (UI 표시용) */
   lastEvent?: string
+  /** (PvP 전용) 지금 손패 1장이 되어 "우노!" 대상인 좌석(엔진 Turn 슬롯). 엔진은 건드리지 않음 */
+  unoPending?: Turn | null
 }
 
 export const DIFFICULTY_LABEL: Record<Difficulty, string> = {

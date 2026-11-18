@@ -69,17 +69,26 @@ export async function requestMatch(playerId: string): Promise<MatchResult | null
 }
 
 /** 대기 중이던 내 방 취소(AI 폴백으로 전환할 때) */
-export async function cancelWaitingRoom(roomId: string, playerId: string) {
-  if (!supabase) return
-  await supabase
+/**
+ * 대기 방 취소(AI 폴백 전환용). 원자적으로 waiting → abandoned 일 때만 성공.
+ * 그 사이 누가 입장해 이미 active면 취소하지 않고 false 반환 → 호출자는 PvP로 진행해야 함.
+ */
+export async function cancelWaitingRoom(roomId: string, playerId: string): Promise<boolean> {
+  if (!supabase) return true
+  const { data, error } = await supabase
     .from('pvp_rooms')
     .update({ status: 'abandoned' })
     .eq('id', roomId)
     .eq('status', 'waiting')
-  await supabase
-    .from('pvp_players')
-    .update({ status: 'ai_game', room_id: null })
-    .eq('id', playerId)
+    .select('id')
+  const cancelled = !error && Array.isArray(data) && data.length > 0
+  if (cancelled) {
+    await supabase
+      .from('pvp_players')
+      .update({ status: 'ai_game', room_id: null })
+      .eq('id', playerId)
+  }
+  return cancelled
 }
 
 export async function getRoom(roomId: string): Promise<PvpRoom | null> {
@@ -123,6 +132,21 @@ export async function pushMove(
   const { data } = await supabase
     .from('pvp_rooms')
     .update({ state, turn_seat: turnSeat, updated_at: new Date().toISOString() })
+    .eq('id', roomId)
+    .select()
+    .maybeSingle()
+  return (data as PvpRoom) ?? null
+}
+
+/** 우노 외치기/잡기 등 턴을 바꾸지 않는 상태 갱신 → 최신 행 반환 */
+export async function pushUno(
+  roomId: string,
+  state: GameState,
+): Promise<PvpRoom | null> {
+  if (!supabase) return null
+  const { data } = await supabase
+    .from('pvp_rooms')
+    .update({ state, updated_at: new Date().toISOString() })
     .eq('id', roomId)
     .select()
     .maybeSingle()

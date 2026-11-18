@@ -233,7 +233,7 @@ function PvpActiveGame({
         <div
           className={[
             'fixed top-14 left-1/2 -translate-x-1/2 z-30 px-3 py-1 rounded-full border text-sm font-bold',
-            pg.secondsLeft <= 2
+            pg.secondsLeft <= 3
               ? 'bg-uno-red/90 border-red-300 text-white animate-pulse'
               : 'bg-slate-900/90 border-slate-600 text-slate-200',
           ].join(' ')}
@@ -242,6 +242,16 @@ function PvpActiveGame({
         </div>
       )}
       <GameBoard {...controller} />
+      {pg.unoActive && (
+        <UnoButton
+          label={
+            pg.unoIsMine
+              ? '빨리 외치세요! (늦으면 상대가 외쳐 +1장)'
+              : `${opponentName}님이 1장! 먼저 외치면 상대 +1장`
+          }
+          onPress={pg.pressUno}
+        />
+      )}
       {result && (
         <ResultModal
           win={result.win}
