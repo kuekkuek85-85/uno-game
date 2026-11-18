@@ -59,7 +59,11 @@ export function usePvpMatch(name: string, studentId: string | null) {
     // host로 대기
     setMySeat('host')
     setPhase('searching')
+    // 이번 대기에서 결과(매칭/AI)는 딱 한 번만 결정 — 겹친 폴링·실시간 이벤트가 두 번 전환하지 않게
+    let decided = false
     const matched = (name: string) => {
+      if (decided) return
+      decided = true
       clearSearch()
       setOpponentName(name)
       setPhase('matched')
@@ -71,17 +75,32 @@ export function usePvpMatch(name: string, studentId: string | null) {
     // 폴백: 1.5초마다 방 확인 + 하트비트(Realtime가 느리거나 끊겨도 매칭을 잡음)
     let elapsed = 0
     pollRef.current = setInterval(async () => {
+      if (decided) return
       elapsed += SEARCH_POLL_MS
       heartbeat(pid)
       const r = await getRoom(res.room_id)
+      if (decided) return
       if (r && r.status === 'active') {
         matched(r.guest_name ?? '상대')
         return
       }
       if (elapsed >= AI_FALLBACK_MS) {
+        decided = true
         clearSearch()
-        await cancelWaitingRoom(res.room_id, pid)
-        setPhase('ai')
+        // 원자적 취소: 정말 아무도 안 왔을 때만 AI로
+        const cancelled = await cancelWaitingRoom(res.room_id, pid)
+        if (cancelled) {
+          setPhase('ai')
+          return
+        }
+        // 취소 직전에 누가 입장함(이미 active) → AI로 가지 않고 그 친구와 PvP 시작
+        const r2 = await getRoom(res.room_id)
+        if (r2 && r2.status === 'active') {
+          setOpponentName(r2.guest_name ?? '상대')
+          setPhase('matched')
+        } else {
+          setPhase('ai')
+        }
       }
     }, SEARCH_POLL_MS)
   }, [])
