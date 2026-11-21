@@ -161,8 +161,22 @@ function MultiGame({
 
   const topArea = (
     <section className="px-3 pt-2">
-      <div className="text-xs text-slate-500 mb-1">
-        진행 방향 {st.direction === 1 ? '↻ 시계' : '↺ 반시계'} · {st.names[st.turn]} 차례
+      <div className="flex items-center justify-between text-xs text-slate-500 mb-1 h-6">
+        <span>
+          진행 방향 {st.direction === 1 ? '↻ 시계' : '↺ 반시계'} · {st.names[st.turn]} 차례
+        </span>
+        {g.myTurn && g.secondsLeft !== null && (
+          <span
+            className={[
+              'px-2 py-0.5 rounded-full border font-bold',
+              g.secondsLeft <= 3
+                ? 'bg-uno-red/90 border-red-300 text-white animate-pulse'
+                : 'bg-slate-900/90 border-slate-600 text-slate-200',
+            ].join(' ')}
+          >
+            ⏱ {g.secondsLeft}초
+          </span>
+        )}
       </div>
       <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${n - 1}, minmax(0, 1fr))` }}>
         {order.map((seat) => {
@@ -230,19 +244,7 @@ function MultiGame({
   const pendingName = st.unoPending !== null ? st.names[st.unoPending] : ''
 
   return (
-    <Screen title={`3인 대전 · ${st.names[g.mySeat] ?? ''}`} onBeforeLeave={winner === undefined ? g.leave : undefined}>
-      {g.myTurn && g.secondsLeft !== null && (
-        <div
-          className={[
-            'fixed top-14 left-1/2 -translate-x-1/2 z-30 px-3 py-1 rounded-full border text-sm font-bold',
-            g.secondsLeft <= 3
-              ? 'bg-uno-red/90 border-red-300 text-white animate-pulse'
-              : 'bg-slate-900/90 border-slate-600 text-slate-200',
-          ].join(' ')}
-        >
-          ⏱ {g.secondsLeft}초 안에 내기
-        </div>
-      )}
+    <Screen title={`${n}인 대전 · ${st.names[g.mySeat] ?? ''}`} onBeforeLeave={winner === undefined ? g.leave : undefined}>
       <GameBoard {...controller} />
       {g.unoActive && winner === undefined && (
         <UnoButton
@@ -282,7 +284,7 @@ function MultiGame({
             winner === null
               ? '게임 종료'
               : winner === g.mySeat
-                ? '3인 대전 1등!'
+                ? `${n}인 대전 1등!`
                 : `${st.names[winner]} 승리`
           }
           onRequeue={() => {

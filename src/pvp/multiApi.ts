@@ -18,6 +18,8 @@ export type MultiRoom = {
   version: number
   created_at: string
   updated_at: string
+  /** 클라이언트 전용: 아직 서버에 저장되지 않은 낙관적 상태 */
+  _local?: boolean
 }
 
 export async function multiJoin(

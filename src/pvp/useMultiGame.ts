@@ -83,19 +83,32 @@ export function useMultiGame(
     st && myTurn ? getValidCards(myHand, multiTop(st), st.currentColor).map((c) => c.id) : [],
   )
 
-  // ── 기록(낙관적 반영 → version 조건부 저장 → 충돌 시 최신으로) ──
+  // ── 기록(낙관적 반영 → version 조건부 저장) ─────────────────
+  // 다른 친구가 먼저 저장해 충돌하면, 최신 상태 위에 같은 행동을 다시 적용해 재시도.
+  // (행동이 더 이상 유효하지 않으면 — 예: 이미 내 차례가 아님 — 최신 상태로 맞추고 끝)
   const commit = async (fn: (s: MultiState) => MultiState) => {
-    const cur = roomRef.current
+    let cur = roomRef.current
     if (!cur?.state) return
-    const next = fn(cur.state)
+    let next = fn(cur.state)
     if (next === cur.state) return
-    setRoom({ ...cur, state: next, version: cur.version + 1 })
-    const saved = await writeMultiState(roomId, cur.version, next)
-    if (saved) setRoom(saved)
-    else {
+    setRoom({ ...cur, state: next, version: cur.version + 1, _local: true })
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const saved = await writeMultiState(roomId, cur.version, next)
+      if (saved) {
+        setRoom(saved)
+        return
+      }
       const fresh = await getMultiRoom(roomId)
-      if (fresh) setRoom(fresh)
+      if (!fresh?.state) return
+      cur = fresh
+      next = fn(fresh.state)
+      if (next === fresh.state) {
+        setRoom(fresh)
+        return
+      }
     }
+    const fresh = await getMultiRoom(roomId)
+    if (fresh) setRoom(fresh)
   }
 
   // 차례가 바뀌면 뽑기 초기화
@@ -103,14 +116,14 @@ export function useMultiGame(
     setDrawnThisTurn(false)
   }, [st?.turn, st?.turns])
 
-  // ── 종료 감지 ──────────────────────────────────────────────
+  // ── 종료 감지: 서버에 저장된 상태로만 판단(저장 전 화면만 보고 끝내지 않음) ──
   useEffect(() => {
-    if (!st || endedRef.current) return
-    if (st.phase === 'finished') {
+    if (!room?.state || room._local || endedRef.current) return
+    if (room.state.phase === 'finished') {
       endedRef.current = true
-      onEnd(st.winner)
+      onEnd(room.state.winner)
     }
-  }, [st, onEnd])
+  }, [room, onEnd])
 
   // ── 10초 턴 타이머(초과 시 자동 패스) ───────────────────────
   useEffect(() => {
