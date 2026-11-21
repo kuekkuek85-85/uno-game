@@ -26,7 +26,7 @@ export function EntryPage() {
   const [error, setError] = useState('')
   const [showRules, setShowRules] = useState(false)
 
-  const enter = async (dest: '/play' | '/pvp') => {
+  const enter = async (dest: '/play' | '/pvp' | '/pvp3') => {
     setError('')
     if (!studentNo.trim() || !name.trim()) {
       setError('학번과 이름을 모두 입력하세요.')
@@ -52,6 +52,7 @@ export function EntryPage() {
   }
   const start = () => enter('/play')
   const startPvp = () => enter('/pvp')
+  const startPvp3 = () => enter('/pvp3')
 
   return (
     <div className="min-h-full flex flex-col items-center justify-center p-4">
@@ -146,11 +147,18 @@ export function EntryPage() {
               disabled={loading}
               className="py-3 rounded-xl bg-uno-green hover:bg-green-600 font-bold text-lg shadow-lg disabled:opacity-60 transition-colors"
             >
-              {loading ? '입장 중…' : '👥 친구와 대전'}
+              {loading ? '입장 중…' : '👥 친구와 1:1'}
             </button>
           </div>
+          <button
+            onClick={startPvp3}
+            disabled={loading}
+            className="w-full py-3 rounded-xl bg-uno-yellow hover:bg-amber-500 text-slate-900 font-bold text-lg shadow-lg disabled:opacity-60 transition-colors"
+          >
+            {loading ? '입장 중…' : '👨‍👩‍👦 친구 3명이서 대전'}
+          </button>
           <p className="text-xs text-slate-500 text-center -mt-2">
-            친구와 대전: 접속 순서대로 1:1 매칭 (짝이 없으면 잠깐 AI와 연습)
+            친구와 대전: 접속 순서대로 매칭 (1:1 또는 3명). 짝이 없으면 잠깐 AI와 연습
           </p>
 
           <div className="flex justify-center gap-4 text-sm text-slate-400">

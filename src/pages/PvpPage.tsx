@@ -106,7 +106,7 @@ function Waiting({ searching }: { searching: boolean }) {
 }
 
 // ── AI 폴백 게임 ────────────────────────────────────────────
-function AiFallbackGame({
+export function AiFallbackGame({
   difficulty,
   onRequeue,
 }: {
@@ -273,7 +273,7 @@ function PvpActiveGame({
 }
 
 // ── 공용 작은 컴포넌트들 ────────────────────────────────────
-function Screen({
+export function Screen({
   title,
   children,
   onBeforeLeave,
@@ -303,7 +303,7 @@ function Screen({
   )
 }
 
-function ResultModal({
+export function ResultModal({
   win,
   subtitle,
   onRequeue,
@@ -338,7 +338,7 @@ function ResultModal({
   )
 }
 
-function UnoButton({ label, onPress }: { label: string; onPress: () => void }) {
+export function UnoButton({ label, onPress }: { label: string; onPress: () => void }) {
   return (
     <div className="fixed inset-x-0 bottom-28 z-40 flex flex-col items-center gap-1 pointer-events-none">
       <button
@@ -354,7 +354,7 @@ function UnoButton({ label, onPress }: { label: string; onPress: () => void }) {
   )
 }
 
-function Centered({ children }: { children: React.ReactNode }) {
+export function Centered({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-full flex flex-col items-center justify-center p-6 text-center">
       {children}
@@ -362,7 +362,7 @@ function Centered({ children }: { children: React.ReactNode }) {
   )
 }
 
-function HomeButton({ onBeforeLeave }: { onBeforeLeave?: () => void }) {
+export function HomeButton({ onBeforeLeave }: { onBeforeLeave?: () => void }) {
   const nav = useNavigate()
   return (
     <button

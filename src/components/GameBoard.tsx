@@ -34,6 +34,8 @@ export type BoardController = {
   onPlayMany: (cardIds: string[]) => void
   onDraw: () => void
   onPass: () => void
+  /** (선택) 상대 영역을 직접 그릴 때 — 다인원 대전용. 없으면 1:1 상대 표시 */
+  topArea?: React.ReactNode
 }
 
 export function GameBoard(c: BoardController) {
@@ -79,6 +81,7 @@ export function GameBoard(c: BoardController) {
   return (
     <>
       {/* 상대 손패 */}
+      {c.topArea ?? (
       <section className="px-4 pt-2">
         <div className="flex items-center gap-2 mb-1">
           <span
@@ -103,6 +106,7 @@ export function GameBoard(c: BoardController) {
           )}
         </div>
       </section>
+      )}
 
       {/* 중앙 */}
       <section className="flex-1 flex items-center justify-center gap-8 py-4">
