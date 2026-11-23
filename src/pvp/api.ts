@@ -68,10 +68,9 @@ export async function requestMatch(playerId: string): Promise<MatchResult | null
   return data as MatchResult
 }
 
-/** 대기 중이던 내 방 취소(AI 폴백으로 전환할 때) */
 /**
- * 대기 방 취소(AI 폴백 전환용). 원자적으로 waiting → abandoned 일 때만 성공.
- * 그 사이 누가 입장해 이미 active면 취소하지 않고 false 반환 → 호출자는 PvP로 진행해야 함.
+ * 대기 방 취소("대기 그만하기"). 원자적으로 waiting → abandoned 일 때만 성공.
+ * 그 사이 누가 입장해 이미 active면 취소하지 않고 false 반환 → 호출자가 그 방을 정리해야 함.
  */
 export async function cancelWaitingRoom(roomId: string, playerId: string): Promise<boolean> {
   if (!supabase) return true
@@ -85,7 +84,7 @@ export async function cancelWaitingRoom(roomId: string, playerId: string): Promi
   if (cancelled) {
     await supabase
       .from('pvp_players')
-      .update({ status: 'ai_game', room_id: null })
+      .update({ status: 'idle', room_id: null })
       .eq('id', playerId)
   }
   return cancelled

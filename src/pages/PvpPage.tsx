@@ -1,18 +1,17 @@
 // ──────────────────────────────────────────────────────────────
 // 친구와 대전(PvP) 화면 — 설계: docs/pvp-spec.md
-// 접속 순서 매칭 / 10초 내 짝 없으면 AI 연습 / 종료 후 재매칭
+// 접속 순서 매칭 / 짝이 올 때까지 대기(스스로 나갈 수 있음) / 종료 후 재매칭
 // ──────────────────────────────────────────────────────────────
 
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useSession } from '../session'
 import { topCard } from '../game/engine'
-import { useGame } from '../hooks/useGame'
 import { GameBoard, type BoardController } from '../components/GameBoard'
 import { usePvpMatch } from '../pvp/usePvpMatch'
 import { usePvpGame, type PvpResult } from '../pvp/usePvpGame'
 import { isPvpAvailable } from '../pvp/api'
-import type { Difficulty } from '../game/types'
+import { pvpEventText } from '../pvp/eventText'
 import type { Seat } from '../pvp/types'
 
 export function PvpPage() {
@@ -42,21 +41,12 @@ export function PvpPage() {
     <PvpFlow
       name={session.name}
       studentId={session.student?.id ?? null}
-      difficulty={session.difficulty}
     />
   )
 }
 
-function PvpFlow({
-  name,
-  studentId,
-  difficulty,
-}: {
-  name: string
-  studentId: string | null
-  difficulty: Difficulty
-}) {
-  const { phase, roomId, mySeat, opponentName, playerId, requeue } = usePvpMatch(
+function PvpFlow({ name, studentId }: { name: string; studentId: string | null }) {
+  const { phase, roomId, mySeat, opponentName, playerId, requeue, leaveWait } = usePvpMatch(
     name,
     studentId,
   )
@@ -70,10 +60,7 @@ function PvpFlow({
     )
 
   if (phase === 'connecting' || phase === 'searching')
-    return <Waiting searching={phase === 'searching'} />
-
-  if (phase === 'ai')
-    return <AiFallbackGame difficulty={difficulty} onRequeue={requeue} />
+    return <Waiting searching={phase === 'searching'} onLeave={leaveWait} />
 
   if (phase === 'matched' && roomId && playerId)
     return (
@@ -86,84 +73,23 @@ function PvpFlow({
       />
     )
 
-  return <Waiting searching />
+  return <Waiting searching onLeave={leaveWait} />
 }
 
 // ── 대기 화면 ───────────────────────────────────────────────
-function Waiting({ searching }: { searching: boolean }) {
+// 시간 제한 없이 짝이 올 때까지 기다린다. 그만두고 싶으면 스스로 나간다.
+function Waiting({ searching, onLeave }: { searching: boolean; onLeave: () => void }) {
   return (
     <Centered>
       <div className="w-12 h-12 rounded-full border-4 border-slate-600 border-t-uno-red animate-spin mb-5" />
       <p className="font-bold text-lg">친구를 기다리는 중…</p>
       <p className="text-sm text-slate-400 mt-1">
-        {searching ? '10초 안에 짝이 없으면 AI와 연습 게임을 시작합니다' : '연결 중…'}
+        {searching ? '친구가 들어오면 바로 시작해요' : '연결 중…'}
       </p>
       <div className="mt-6">
-        <HomeButton />
+        <HomeButton onBeforeLeave={onLeave} label="대기 그만하기" />
       </div>
     </Centered>
-  )
-}
-
-// ── AI 폴백 게임 ────────────────────────────────────────────
-export function AiFallbackGame({
-  difficulty,
-  onRequeue,
-}: {
-  difficulty: Difficulty
-  onRequeue: () => void
-}) {
-  const [result, setResult] = useState<'win' | 'lose' | null>(null)
-  const g = useGame(difficulty, (r) => setResult(r))
-  const st = g.state
-  const controller: BoardController = {
-    top: topCard(st),
-    currentColor: st.currentColor,
-    deckCount: st.deck.length,
-    myHand: st.playerHand,
-    oppCount: st.aiHand.length,
-    oppLabel: 'AI',
-    oppIsTurn: st.turn === 'ai' && st.phase === 'playing',
-    myTurn: st.turn === 'player' && st.phase === 'playing',
-    validIds: g.validIds,
-    canDraw: g.canDraw,
-    drawnThisTurn: g.drawnThisTurn,
-    lastEvent: st.lastEvent,
-    onPlay: g.playPlayerCard,
-    onPlayMany: g.playPlayerCards,
-    onDraw: g.drawPlayerCard,
-    onPass: g.passPlayerTurn,
-  }
-
-  return (
-    <Screen title="AI와 연습 중 (짝 기다리는 동안)">
-      <GameBoard {...controller} />
-      {g.toast && (
-        <div className="fixed top-16 left-1/2 -translate-x-1/2 z-40 px-4 py-2 rounded-full bg-slate-900/95 border border-slate-600 text-sm font-bold shadow-lg animate-pop-in whitespace-nowrap">
-          {g.toast}
-        </div>
-      )}
-      {g.uno && (
-        <UnoButton
-          label={
-            g.uno.who === 'player'
-              ? '빨리 외치세요! (안 외치면 벌칙 +1장)'
-              : 'AI가 깜빡했어요! 먼저 외치면 AI가 +1장'
-          }
-          onPress={g.pressUno}
-        />
-      )}
-      {result && (
-        <ResultModal
-          win={result === 'win'}
-          subtitle={`AI 연습 (${difficulty})`}
-          onRequeue={() => {
-            setResult(null)
-            onRequeue()
-          }}
-        />
-      )}
-    </Screen>
   )
 }
 
@@ -220,7 +146,7 @@ function PvpActiveGame({
     validIds: pg.validIds,
     canDraw: pg.canDraw,
     drawnThisTurn: pg.drawnThisTurn,
-    lastEvent: pg.state.lastEvent,
+    lastEvent: pvpEventText(pg.state, mySeat, opponentName),
     onPlay: pg.play,
     onPlayMany: pg.playMany,
     onDraw: pg.draw,
@@ -362,7 +288,13 @@ export function Centered({ children }: { children: React.ReactNode }) {
   )
 }
 
-export function HomeButton({ onBeforeLeave }: { onBeforeLeave?: () => void }) {
+export function HomeButton({
+  onBeforeLeave,
+  label = '처음으로',
+}: {
+  onBeforeLeave?: () => void
+  label?: string
+}) {
   const nav = useNavigate()
   return (
     <button
@@ -372,7 +304,7 @@ export function HomeButton({ onBeforeLeave }: { onBeforeLeave?: () => void }) {
       }}
       className="px-4 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-sm"
     >
-      ← 처음으로
+      ← {label}
     </button>
   )
 }

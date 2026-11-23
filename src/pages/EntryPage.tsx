@@ -175,7 +175,7 @@ export function EntryPage() {
             {loading ? '입장 중…' : '👨‍👩‍👦 친구 3명이서 대전'}
           </button>
           <p className="text-xs text-slate-500 text-center -mt-2">
-            친구와 대전: 접속 순서대로 매칭 (1:1 또는 3명). 짝이 없으면 잠깐 AI와 연습
+            친구와 대전: 접속 순서대로 매칭 (1:1 또는 3명). 친구가 올 때까지 기다려요
           </p>
 
           <div className="flex justify-center gap-4 text-sm text-slate-400">

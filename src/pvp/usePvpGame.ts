@@ -32,6 +32,7 @@ import {
   subscribeRoom,
 } from './api'
 import { seatToTurn, turnToSeat, type PvpRoom, type Seat } from './types'
+import { slotLabel } from './eventText'
 
 const HEARTBEAT_MS = 5000
 const POLL_MS = 1200 // Realtime가 끊겨도 상태를 따라잡는 폴백 주기
@@ -227,10 +228,11 @@ export function usePvpGame(
     if (!st || !pending || roomRef.current?.status !== 'active') return
     let next: GameState
     if (pending === myTurnSlot) {
-      next = { ...st, unoPending: null, lastEvent: '우노! 🎉' }
+      // 문구는 엔진 슬롯 표기('나'=host, 'AI'=guest)로 적고, 화면에서 보는 사람 기준으로 바꾼다
+      next = { ...st, unoPending: null, lastEvent: `${slotLabel(mySeat)}: 우노! 🎉` }
     } else {
       next = { ...drawPenalty(st, pending, 1), unoPending: null }
-      next.lastEvent = '우노! 🎯 상대가 못 외쳐서 +1장'
+      next.lastEvent = `${slotLabel(turnToSeat(pending))}: 우노를 못 외쳐서 +1장 🎯`
     }
     setRoom((r) => (r ? { ...r, state: next } : r))
     const updated = await pushUno(roomId, next)
