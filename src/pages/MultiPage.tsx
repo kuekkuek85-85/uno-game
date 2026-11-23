@@ -1,13 +1,12 @@
 // ──────────────────────────────────────────────────────────────
 // 3인 대전 화면
-// 대기실(모인 친구 + 15초 카운트다운) → 게임 → 결과 → 다시 매칭
-// 혼자면 AI 연습, 게임 중 나가면 그 학생만 탈락하고 나머지는 계속
+// 대기실(친구가 올 때까지 대기, 스스로 나가기 가능) → 게임 → 결과 → 다시 매칭
+// 2명이 모이면 15초 카운트다운 후 시작, 게임 중 나가면 그 학생만 탈락하고 나머지는 계속
 // ──────────────────────────────────────────────────────────────
 
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useSession } from '../session'
-import type { Difficulty } from '../game/types'
 import { multiTop } from '../game/multi'
 import { GameBoard, type BoardController } from '../components/GameBoard'
 import { CardBack } from '../components/CardView'
@@ -16,7 +15,6 @@ import { MULTI_WAIT_S, useMultiMatch } from '../pvp/useMultiMatch'
 import { useMultiGame } from '../pvp/useMultiGame'
 import type { MultiRoom } from '../pvp/multiApi'
 import {
-  AiFallbackGame,
   Centered,
   HomeButton,
   ResultModal,
@@ -46,20 +44,11 @@ export function MultiPage() {
     <MultiFlow
       name={session.name}
       studentId={session.student?.id ?? null}
-      difficulty={session.difficulty}
     />
   )
 }
 
-function MultiFlow({
-  name,
-  studentId,
-  difficulty,
-}: {
-  name: string
-  studentId: string | null
-  difficulty: Difficulty
-}) {
+function MultiFlow({ name, studentId }: { name: string; studentId: string | null }) {
   const m = useMultiMatch(name, studentId, MULTI_CAPACITY)
 
   if (m.phase === 'error')
@@ -72,22 +61,31 @@ function MultiFlow({
         <HomeButton />
       </Centered>
     )
-  if (m.phase === 'ai') return <AiFallbackGame difficulty={difficulty} onRequeue={m.requeue} />
   if (m.phase === 'playing' && m.roomId && m.playerId)
     return <MultiGame key={m.roomId} roomId={m.roomId} playerId={m.playerId} onRequeue={m.requeue} />
-  return <WaitingRoom room={m.room} onLeave={m.leaveWait} />
+  return <WaitingRoom room={m.room} pairedAt={m.pairedAt} onLeave={m.leaveWait} />
 }
 
 // ── 대기실 ──────────────────────────────────────────────────
-function WaitingRoom({ room, onLeave }: { room: MultiRoom | null; onLeave: () => void }) {
+function WaitingRoom({
+  room,
+  pairedAt,
+  onLeave,
+}: {
+  room: MultiRoom | null
+  pairedAt: number | null
+  onLeave: () => void
+}) {
   const [now, setNow] = useState(Date.now())
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 500)
     return () => clearInterval(t)
   }, [])
   const count = room?.players.length ?? 1
-  const elapsed = room ? (now - new Date(room.created_at).getTime()) / 1000 : 0
-  const left = Math.max(0, Math.min(MULTI_WAIT_S, Math.ceil(MULTI_WAIT_S - elapsed)))
+  const left =
+    pairedAt === null
+      ? null
+      : Math.max(0, Math.min(MULTI_WAIT_S, Math.ceil(MULTI_WAIT_S - (now - pairedAt) / 1000)))
 
   return (
     <Centered>
@@ -112,13 +110,14 @@ function WaitingRoom({ room, onLeave }: { room: MultiRoom | null; onLeave: () =>
         })}
       </div>
       <p className="text-sm text-slate-400 mt-4">
-        {left > 0
-          ? `${left}초 안에 다 모이지 않으면, 모인 친구들(2명 이상)과 시작해요`
-          : '곧 시작합니다…'}
+        {left === null
+          ? '친구가 들어오면 함께 시작해요'
+          : left > 0
+            ? `${left}초 안에 3번째 친구가 없으면, 2명이서 시작해요`
+            : '곧 시작합니다…'}
       </p>
-      <p className="text-xs text-slate-500 mt-1">혼자면 AI와 연습 게임을 해요</p>
       <div className="mt-6">
-        <HomeButton onBeforeLeave={onLeave} />
+        <HomeButton onBeforeLeave={onLeave} label="대기 그만하기" />
       </div>
     </Centered>
   )
