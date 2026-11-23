@@ -18,10 +18,19 @@ const DIFF_INFO: Record<Difficulty, { desc: string; emoji: string }> = {
 
 export function EntryPage() {
   const nav = useNavigate()
-  const { setSession } = useSession()
-  const [studentNo, setStudentNo] = useState('')
-  const [name, setName] = useState('')
-  const [difficulty, setDifficulty] = useState<Difficulty>('easy')
+  const { session, setSession } = useSession()
+  // 지난번에 입력한 학번·이름·난이도를 기억해 미리 채운다(매번 다시 쓰지 않게)
+  const [studentNo, setStudentNo] = useState(session?.studentNo ?? '')
+  const [name, setName] = useState(session?.name ?? '')
+  const [difficulty, setDifficulty] = useState<Difficulty>(session?.difficulty ?? 'easy')
+  const remembered = Boolean(session?.studentNo && session?.name)
+
+  // 공용 기기에서 다른 학생이 쓸 때: 기억된 정보 지우기
+  const forget = () => {
+    setSession(null)
+    setStudentNo('')
+    setName('')
+  }
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [showRules, setShowRules] = useState(false)
@@ -103,6 +112,14 @@ export function EntryPage() {
               />
             </label>
           </div>
+          {remembered && (
+            <div className="flex items-center justify-between text-xs -mt-2">
+              <span className="text-slate-400">✓ 지난번 정보를 기억했어요</span>
+              <button onClick={forget} className="text-slate-400 underline hover:text-white">
+                내가 아니에요 (지우기)
+              </button>
+            </div>
+          )}
 
           <div>
             <span className="text-sm text-slate-300">AI 난이도</span>
